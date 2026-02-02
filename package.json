@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "bun run src/index.tsx",
     "build": "bun build src/index.tsx --outdir dist --target node --minify",
-    "start": "bun run dist/index.js"
+    "start": "bun run dist/index.js",
+    "test": "bun test"
   },
   "keywords": [
     "beambox",
