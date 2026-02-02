@@ -1,8 +1,8 @@
-import { Command } from "commander";
-import { logger, LogLevel } from "../lib/utils/logger.ts";
 import { statSync } from "node:fs";
+import { Command } from "commander";
+import { LogLevel, logger } from "../lib/utils/logger.ts";
 import { scanDirectoryForImages } from "../utils/app-utils.ts";
-import type { UploadOptions, StatusOptions } from "./types.ts";
+import type { StatusOptions, UploadOptions } from "./types.ts";
 
 export function setupCLI() {
   const program = new Command();
@@ -25,7 +25,11 @@ export function setupCLI() {
     .option("--address <address>", "BLE device address (optional)")
     .option("--size <size>", "Target size WxH", "368x368")
     .option("--test", "Upload 8x8 checkerboard test pattern", false)
-    .option("--packet-delay <ms>", "Delay between packets in milliseconds", "20")
+    .option(
+      "--packet-delay <ms>",
+      "Delay between packets in milliseconds",
+      "20",
+    )
     .action(async (imageArg: string | undefined, options: UploadOptions) => {
       const globalOptions = program.opts() as { verbose: boolean };
       const verbose = globalOptions.verbose;

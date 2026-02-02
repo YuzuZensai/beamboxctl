@@ -1,6 +1,6 @@
-import React from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
+import type React from "react";
 
 interface UploadProgressProps {
   status: "connecting" | "uploading" | "success" | "error";

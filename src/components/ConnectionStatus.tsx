@@ -1,10 +1,10 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from "ink";
+import type React from "react";
 
 export interface ConnectionStep {
   id: string;
   label: string;
-  status: 'pending' | 'active' | 'complete' | 'error';
+  status: "pending" | "active" | "complete" | "error";
   error?: string;
 }
 
@@ -12,18 +12,20 @@ interface ConnectionStatusProps {
   steps: ConnectionStep[];
 }
 
-export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ steps }) => {
-  const activeStep = steps.find(s => s.status === 'active');
-  const lastCompletedStep = [...steps].reverse().find(s => s.status === 'complete');
-  const errorStep = steps.find(s => s.status === 'error');
+export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
+  steps,
+}) => {
+  const activeStep = steps.find((s) => s.status === "active");
+  const lastCompletedStep = [...steps]
+    .reverse()
+    .find((s) => s.status === "complete");
+  const errorStep = steps.find((s) => s.status === "error");
 
   if (errorStep) {
     return (
       <Box marginTop={1}>
         <Text color="red">✗ {errorStep.label} failed</Text>
-        {errorStep.error && (
-          <Text color="dim"> ({errorStep.error})</Text>
-        )}
+        {errorStep.error && <Text color="dim"> ({errorStep.error})</Text>}
       </Box>
     );
   }
@@ -45,7 +47,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ steps }) => 
     );
   }
 
-  const firstPending = steps.find(s => s.status === 'pending');
+  const firstPending = steps.find((s) => s.status === "pending");
   if (firstPending) {
     return (
       <Box marginTop={1}>

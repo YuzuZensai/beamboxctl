@@ -1,6 +1,6 @@
-import React from "react";
 import { Box, Text } from "ink";
 import BigText from "ink-big-text";
+import type React from "react";
 
 const PASTEL_PINK = "#FFB6C1";
 const sponsorLink = "github.com/sponsors/YuzuZensai";

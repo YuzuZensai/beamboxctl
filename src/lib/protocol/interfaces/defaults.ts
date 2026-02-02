@@ -1,6 +1,6 @@
-import type { BLEConfig, ProtocolConfig, ImageConfig } from "./config.ts";
 import { CMD_TYPE } from "../constants.ts";
 import { PacketType } from "../packet-types.ts";
+import type { BLEConfig, ImageConfig, ProtocolConfig } from "./config.ts";
 
 /**
  * Default BLE configuration for BeamBox devices

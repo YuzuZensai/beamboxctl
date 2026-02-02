@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { BeamBoxUploader } from "../lib/core/beambox-uploader.ts";
-import { logger, LogEventType } from "../lib/utils/logger.ts";
-import type { DeviceStatus, ParsedResponse } from "../lib/protocol/interfaces/index.ts";
-import type { ConnectionStep } from "../components/index.ts";
-import { updateStepStatus } from "../utils/app-utils.ts";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { StatusOptions } from "../cli/types.ts";
+import type { ConnectionStep } from "../components/index.ts";
+import { BeamBoxUploader } from "../lib/core/beambox-uploader.ts";
+import type {
+  DeviceStatus,
+  ParsedResponse,
+} from "../lib/protocol/interfaces/index.ts";
+import { LogEventType, logger } from "../lib/utils/logger.ts";
+import { updateStepStatus } from "../utils/app-utils.ts";
 
 export function useDeviceStatus(options: StatusOptions) {
   const [loading, setLoading] = useState<boolean>(true);

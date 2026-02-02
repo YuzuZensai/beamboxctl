@@ -1,9 +1,9 @@
-import React from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
-import { Header, Status, ConnectionStatus } from "./index.ts";
-import { useDeviceStatus } from "../hooks/useDeviceStatus.ts";
+import type React from "react";
 import type { StatusOptions } from "../cli/types.ts";
+import { useDeviceStatus } from "../hooks/useDeviceStatus.ts";
+import { ConnectionStatus, Header, Status } from "./index.ts";
 
 export interface StatusAppProps {
   options: StatusOptions;
@@ -11,13 +11,8 @@ export interface StatusAppProps {
 }
 
 export const StatusApp: React.FC<StatusAppProps> = ({ options }) => {
-  const {
-    loading,
-    error,
-    deviceStatus,
-    notifications,
-    connectionSteps,
-  } = useDeviceStatus(options);
+  const { loading, error, deviceStatus, notifications, connectionSteps } =
+    useDeviceStatus(options);
 
   return (
     <Box flexDirection="column" padding={1}>

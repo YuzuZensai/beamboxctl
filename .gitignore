@@ -3,6 +3,7 @@ node_modules/
 dist/
 *.lockb
 *.bun
+package-lock.json
 
 # TypeScript
 *.tsbuildinfo

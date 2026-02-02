@@ -1,19 +1,19 @@
-import { describe, test, expect } from "bun:test";
-import { PayloadBuilder } from "./payload-builder.ts";
-import { PacketType } from "../packet-types.ts";
-import { DEFAULT_PROTOCOL_CONFIG } from "../interfaces/defaults.ts";
-import type { ProtocolConfig } from "../interfaces/config.ts";
+import { describe, expect, test } from "bun:test";
 import {
-  expectHex,
-  createTestJpeg,
   calculateChecksum,
+  createTestJpeg,
+  expectHex,
 } from "../../../__tests__/utils/test-helpers.ts";
+import type { ProtocolConfig } from "../interfaces/config.ts";
+import { DEFAULT_PROTOCOL_CONFIG } from "../interfaces/defaults.ts";
+import { PacketType } from "../packet-types.ts";
+import { PayloadBuilder } from "./payload-builder.ts";
 
 const createBuilder = () => new PayloadBuilder(DEFAULT_PROTOCOL_CONFIG);
 
 describe("PayloadBuilder", () => {
   describe("buildImageInfo()", () => {
-    test("default creates {\"type\":6,\"number\":1}", () => {
+    test('default creates {"type":6,"number":1}', () => {
       const payload = createBuilder().buildImageInfo();
       const json = JSON.parse(payload.toString("utf-8"));
       expect(json).toEqual({ type: 6, number: 1 });
@@ -25,13 +25,15 @@ describe("PayloadBuilder", () => {
       expect(text).toBe('{"type":6,"number":1}');
     });
 
-    test("custom type creates {\"type\":5,\"number\":1}", () => {
-      const payload = createBuilder().buildImageInfo(PacketType.DYNAMIC_AMBIENCE);
+    test('custom type creates {"type":5,"number":1}', () => {
+      const payload = createBuilder().buildImageInfo(
+        PacketType.DYNAMIC_AMBIENCE,
+      );
       const json = JSON.parse(payload.toString("utf-8"));
       expect(json).toEqual({ type: 5, number: 1 });
     });
 
-    test("custom number creates {\"type\":6,\"number\":3}", () => {
+    test('custom number creates {"type":6,"number":3}', () => {
       const payload = createBuilder().buildImageInfo(PacketType.IMAGE, 3);
       const json = JSON.parse(payload.toString("utf-8"));
       expect(json).toEqual({ type: 6, number: 3 });
@@ -55,7 +57,7 @@ describe("PayloadBuilder", () => {
   });
 
   describe("buildImageData()", () => {
-    test("format starts with {\"type\":6,\"data\"", () => {
+    test('format starts with {"type":6,"data"', () => {
       const jpeg = createTestJpeg(100);
       const payload = createBuilder().buildImageData(jpeg, [64, 32]);
       const text = payload.toString("utf-8", 0, 15);
@@ -89,7 +91,10 @@ describe("PayloadBuilder", () => {
       const payload = createBuilder().buildImageData(jpeg, [64, 32]);
       const prefixLen = '{"type":6,"data":'.length;
       const jpegStart = prefixLen + 36;
-      const jpegInPayload = payload.subarray(jpegStart, jpegStart + jpeg.length);
+      const jpegInPayload = payload.subarray(
+        jpegStart,
+        jpegStart + jpeg.length,
+      );
       expect(jpegInPayload.equals(jpeg)).toBe(true);
     });
 
@@ -102,12 +107,12 @@ describe("PayloadBuilder", () => {
       expect(payload.length).toBe(expectedLen);
     });
 
-    test("custom type creates {\"type\":5,\"data\":...}", () => {
+    test('custom type creates {"type":5,"data":...}', () => {
       const jpeg = createTestJpeg(100);
       const payload = createBuilder().buildImageData(
         jpeg,
         [64, 32],
-        PacketType.DYNAMIC_AMBIENCE
+        PacketType.DYNAMIC_AMBIENCE,
       );
       const prefix = payload.toString("utf-8", 0, 17);
       expect(prefix).toBe('{"type":5,"data":');
@@ -149,12 +154,14 @@ describe("PayloadBuilder", () => {
 
     test("error message mentions Type 5/DYNAMIC_AMBIENCE", () => {
       expect(() => createBuilder().buildInitPayload()).toThrow(
-        /DYNAMIC_AMBIENCE|Type 5/i
+        /DYNAMIC_AMBIENCE|Type 5/i,
       );
     });
 
     test("error message mentions not implemented", () => {
-      expect(() => createBuilder().buildInitPayload()).toThrow(/not.*implemented/i);
+      expect(() => createBuilder().buildInitPayload()).toThrow(
+        /not.*implemented/i,
+      );
     });
   });
 
@@ -173,7 +180,12 @@ describe("PayloadBuilder", () => {
 
     test("byte 1 uses override packetType when provided", () => {
       const payload = Buffer.from("test");
-      const packet = createBuilder().createPacket(payload, 0, 0, PacketType.IMAGE);
+      const packet = createBuilder().createPacket(
+        payload,
+        0,
+        0,
+        PacketType.IMAGE,
+      );
       expect(packet[1]).toBe(PacketType.IMAGE);
     });
 
@@ -207,11 +219,11 @@ describe("PayloadBuilder", () => {
     test("checksum = (-sum(header + payload)) & 0xFF", () => {
       const payload = Buffer.from("test");
       const packet = createBuilder().createPacket(payload);
-      
+
       const headerAndPayload = packet.subarray(0, packet.length - 1);
       const expectedChecksum = calculateChecksum(headerAndPayload);
       const actualChecksum = packet[packet.length - 1];
-      
+
       expect(actualChecksum).toBe(expectedChecksum);
     });
 
@@ -270,7 +282,7 @@ describe("PayloadBuilder", () => {
         payload,
         0,
         0,
-        PacketType.DEVICE_STATUS
+        PacketType.DEVICE_STATUS,
       );
       expect(packet[1]).toBe(PacketType.DEVICE_STATUS);
     });
@@ -324,14 +336,19 @@ describe("PayloadBuilder", () => {
 
     test("image info packet structure", () => {
       const infoPayload = Buffer.from('{"type":6,"number":1}');
-      const packet = createBuilder().createPacket(infoPayload, 0, 0, PacketType.IMAGE);
-      
+      const packet = createBuilder().createPacket(
+        infoPayload,
+        0,
+        0,
+        PacketType.IMAGE,
+      );
+
       expect(packet[0]).toBe(0xf1);
       expect(packet[1]).toBe(PacketType.IMAGE);
       expect(packet.readUInt16BE(2)).toBe(0);
       expect(packet.readUInt16BE(4)).toBe(0);
       expect(packet.readUInt16BE(6)).toBe(infoPayload.length);
-      
+
       const embeddedPayload = packet.subarray(8, 8 + infoPayload.length);
       expect(embeddedPayload.equals(infoPayload)).toBe(true);
     });
@@ -340,17 +357,22 @@ describe("PayloadBuilder", () => {
   describe("integration - upload sequence", () => {
     test("build info + data packets for single image", () => {
       const builder = createBuilder();
-      
+
       const infoPayload = builder.buildImageInfo();
-      const infoPacket = builder.createPacket(infoPayload, 0, 0, PacketType.IMAGE);
-      
+      const infoPacket = builder.createPacket(
+        infoPayload,
+        0,
+        0,
+        PacketType.IMAGE,
+      );
+
       expect(infoPacket[0]).toBe(0xf1);
       expect(infoPacket[1]).toBe(PacketType.IMAGE);
-      
+
       const jpeg = createTestJpeg(200);
       const dataPayload = builder.buildImageData(jpeg, [64, 32]);
       const dataPacket = builder.createPacket(dataPayload, 1, 0);
-      
+
       expect(dataPacket[0]).toBe(0xf1);
       expect(dataPacket.readUInt16BE(2)).toBe(1);
       expect(dataPacket.readUInt16BE(4)).toBe(0);
@@ -360,24 +382,24 @@ describe("PayloadBuilder", () => {
       const builder = createBuilder();
       const jpeg = createTestJpeg(1000);
       const fullData = builder.buildImageData(jpeg, [64, 32]);
-      
+
       const chunkSize = 512;
       const totalChunks = Math.ceil(fullData.length / chunkSize);
-      
+
       const packets = [];
       for (let i = 0; i < totalChunks; i++) {
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, fullData.length);
         const chunk = fullData.subarray(start, end);
         const remaining = totalChunks - 1 - i;
-        
+
         const packet = builder.createPacket(chunk, totalChunks, remaining);
         packets.push(packet);
-        
+
         expect(packet.readUInt16BE(2)).toBe(totalChunks);
         expect(packet.readUInt16BE(4)).toBe(remaining);
       }
-      
+
       expect(packets.length).toBe(totalChunks);
       expect(packets[0]!.readUInt16BE(4)).toBe(totalChunks - 1);
       expect(packets[packets.length - 1]!.readUInt16BE(4)).toBe(0);

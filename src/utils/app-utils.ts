@@ -1,5 +1,5 @@
 import { readdirSync, statSync } from "node:fs";
-import { join, extname } from "node:path";
+import { extname, join } from "node:path";
 import type { ConnectionStep } from "../components/index.ts";
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"];

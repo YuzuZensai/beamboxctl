@@ -1,20 +1,20 @@
+import type { DeviceStatus, ParsedResponse } from "../interfaces/index.ts";
 import { PacketType } from "../packet-types.ts";
 import { ResponseStatus } from "../response-types.ts";
-import type { ParsedResponse, DeviceStatus } from "../interfaces/index.ts";
 
 /**
  * Parser for responses received from the BeamBox device
- * 
+ *
  * Handles parsing of raw Buffer data into structured response objects,
  * extracting status codes, JSON data, and device status information
  */
 export class ResponseParser {
   /**
    * Parses raw response data from the device
-   * 
+   *
    * Cleans the raw text, extracts status codes, parses JSON data,
    * and identifies device status packets
-   * 
+   *
    * @param data - Raw Buffer received from the device
    * @returns Parsed response containing status, JSON data, and device info if applicable
    */
@@ -43,9 +43,9 @@ export class ResponseParser {
       status = ResponseStatus.ERROR;
     }
 
-    const jsonData = this.extractJson(rawText);
+    const jsonData = ResponseParser.extractJson(rawText);
 
-    const isStatus = this.isDeviceStatusPacket(jsonData);
+    const isStatus = ResponseParser.isDeviceStatusPacket(jsonData);
 
     const result: ParsedResponse = {
       rawText,
@@ -55,7 +55,7 @@ export class ResponseParser {
     };
 
     if (isStatus && jsonData) {
-      result.deviceStatus = this.parseDeviceStatus(jsonData);
+      result.deviceStatus = ResponseParser.parseDeviceStatus(jsonData);
     }
 
     return result;
@@ -63,7 +63,7 @@ export class ResponseParser {
 
   /**
    * Determines if the parsed JSON data represents a device status packet
-   * 
+   *
    * @param jsonData - Parsed JSON object from the response
    * @returns True if this is a device status packet, false otherwise
    */
@@ -81,9 +81,9 @@ export class ResponseParser {
 
   /**
    * Parses device status information from JSON data
-   * 
+   *
    * Extracts storage information, device name, display size, and brand ID
-   * 
+   *
    * @param jsonData - Parsed JSON object containing device status
    * @returns Device status with typed fields
    */
@@ -102,11 +102,11 @@ export class ResponseParser {
 
   /**
    * Extracts JSON data from response text
-   * 
+   *
    * Attempts to parse the entire text as JSON. If that fails,
    * attempts to extract JSON from within the text by finding
    * the first '{' and last '}' characters.
-   * 
+   *
    * @param text - Response text to parse
    * @returns Parsed JSON object or null if no valid JSON found
    */
@@ -133,7 +133,7 @@ export class ResponseParser {
 
   /**
    * Checks if the response indicates successful operation
-   * 
+   *
    * @param response - Parsed response to check
    * @returns True if response status is SUCCESS
    */
@@ -143,7 +143,7 @@ export class ResponseParser {
 
   /**
    * Checks if the response indicates a failed operation
-   * 
+   *
    * @param response - Parsed response to check
    * @returns True if response status is FAIL
    */
@@ -153,7 +153,7 @@ export class ResponseParser {
 
   /**
    * Checks if the response indicates an error
-   * 
+   *
    * @param response - Parsed response to check
    * @returns True if response status is ERROR
    */

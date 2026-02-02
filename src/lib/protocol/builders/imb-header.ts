@@ -28,11 +28,11 @@ export class IMBHeaderBuilder {
    * @returns 36 bytes of IMB header data
    */
   static build(jpegSize: number, width: number, height: number): Buffer {
-    const header = Buffer.alloc(this.HEADER_SIZE);
+    const header = Buffer.alloc(IMBHeaderBuilder.HEADER_SIZE);
     let offset = 0;
 
     // 1. IMB signature (3 bytes)
-    this.SIGNATURE.copy(header, offset);
+    IMBHeaderBuilder.SIGNATURE.copy(header, offset);
     offset += 3;
 
     // 2. One zero byte (1 byte)
@@ -40,16 +40,16 @@ export class IMBHeaderBuilder {
     offset += 1;
 
     // 3. Header size: 36 as int32_LE (4 bytes)
-    header.writeUInt32LE(this.HEADER_SIZE, offset);
+    header.writeUInt32LE(IMBHeaderBuilder.HEADER_SIZE, offset);
     offset += 4;
 
     // 4. Total size: jpegSize + 36 as int32_LE (4 bytes)
-    const totalSize = jpegSize + this.HEADER_SIZE;
+    const totalSize = jpegSize + IMBHeaderBuilder.HEADER_SIZE;
     header.writeUInt32LE(totalSize, offset);
     offset += 4;
 
     // 5. Format: 11 (1 byte) + zero byte (1 byte)
-    header.writeUInt8(this.FORMAT_VALUE, offset);
+    header.writeUInt8(IMBHeaderBuilder.FORMAT_VALUE, offset);
     offset += 1;
     header.writeUInt8(0x00, offset);
     offset += 1;
@@ -67,7 +67,7 @@ export class IMBHeaderBuilder {
     offset += 2;
 
     // 9. Header size repeat: 36 as int32_LE (4 bytes)
-    header.writeUInt32LE(this.HEADER_SIZE, offset);
+    header.writeUInt32LE(IMBHeaderBuilder.HEADER_SIZE, offset);
     offset += 4;
 
     // 10. JPEG size as int32_LE (4 bytes)
@@ -80,9 +80,9 @@ export class IMBHeaderBuilder {
     header.writeUInt32LE(0, offset);
     offset += 4;
 
-    if (header.length !== this.HEADER_SIZE) {
+    if (header.length !== IMBHeaderBuilder.HEADER_SIZE) {
       throw new Error(
-        `IMB header must be exactly ${this.HEADER_SIZE} bytes, got ${header.length}`,
+        `IMB header must be exactly ${IMBHeaderBuilder.HEADER_SIZE} bytes, got ${header.length}`,
       );
     }
 
@@ -95,12 +95,12 @@ export class IMBHeaderBuilder {
    * @returns True if valid IMB header
    */
   static validate(header: Buffer): boolean {
-    if (header.length !== this.HEADER_SIZE) {
+    if (header.length !== IMBHeaderBuilder.HEADER_SIZE) {
       return false;
     }
 
     // Check signature
-    if (!header.subarray(0, 3).equals(this.SIGNATURE)) {
+    if (!header.subarray(0, 3).equals(IMBHeaderBuilder.SIGNATURE)) {
       return false;
     }
 
@@ -113,7 +113,10 @@ export class IMBHeaderBuilder {
     const headerSize1 = header.readUInt32LE(4);
     const headerSize2 = header.readUInt32LE(20);
 
-    if (headerSize1 !== this.HEADER_SIZE || headerSize2 !== this.HEADER_SIZE) {
+    if (
+      headerSize1 !== IMBHeaderBuilder.HEADER_SIZE ||
+      headerSize2 !== IMBHeaderBuilder.HEADER_SIZE
+    ) {
       return false;
     }
 

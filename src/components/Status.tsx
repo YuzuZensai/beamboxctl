@@ -1,6 +1,9 @@
-import React from "react";
-import { Box, Text, Newline } from "ink";
-import type { DeviceStatus, ParsedResponse } from "../lib/protocol/interfaces/index.ts";
+import { Box, Newline, Text } from "ink";
+import type React from "react";
+import type {
+  DeviceStatus,
+  ParsedResponse,
+} from "../lib/protocol/interfaces/index.ts";
 
 interface StatusProps {
   status: DeviceStatus | null;
@@ -13,7 +16,7 @@ const formatBytes = (bytes: number): string => {
   const units = ["B", "KB", "MB", "GB"];
   const k = 1024;
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
+  const value = bytes / k ** i;
   return `${value.toFixed(2)} ${units[i]}`;
 };
 
