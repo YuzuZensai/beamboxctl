@@ -10,7 +10,7 @@ Unofficial CLI for managing beambox e-Badge devices over Bluetooth LE.
 
 ## Supported Devices
 
-- [beambox e-Badge Pulse](https://beambox.com.cn/pages/shop) (368x368)
+- [beambox e-Badge Pulse (Nikko)](https://beambox.com.cn/pages/shop) (368x368)
 - Other beambox e-Badge models may work, but are untested
 
 ## Development
