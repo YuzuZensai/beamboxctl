@@ -1,0 +1,48 @@
+{
+  "knownPackets": {
+    "imageInfo": {
+      "description": "Image info packet: {\"type\":6,\"number\":1}",
+      "hex": "f10600000000001a7b2274797065223a362c226e756d626572223a317d77"
+    },
+    "deviceStatusResponse": {
+      "description": "Device status response Type 13",
+      "hex": "7b2274797065223a31332c22616c6c7370616365223a31363338342c22667265657370616365223a31333839322c226465766e616d65223a224265616d426f78222c2273697a65223a223634783332222c226272616e64223a317d",
+      "json": {
+        "type": 13,
+        "allspace": 16384,
+        "freespace": 13892,
+        "devname": "BeamBox",
+        "size": "64x32",
+        "brand": 1
+      }
+    },
+    "getPacketSuccess": {
+      "description": "Success response from device",
+      "text": "GetPacketSuccess"
+    },
+    "getPacketFail": {
+      "description": "Failure response from device",
+      "text": "GetPacketFail"
+    },
+    "errorResponse": {
+      "description": "Error response from device",
+      "text": "1111111111"
+    }
+  },
+  "expectedHeaders": [
+    {
+      "description": "1KB JPEG, 64x32",
+      "jpegSize": 1024,
+      "width": 64,
+      "height": 32,
+      "hex": "494d4200000000240000041800000b0040002000000024000004000000000000000000"
+    },
+    {
+      "description": "100 byte JPEG, 128x64",
+      "jpegSize": 100,
+      "width": 128,
+      "height": 64,
+      "hex": "494d4200000000240000008800000b0080004000000024000000640000000000000000"
+    }
+  ]
+}
