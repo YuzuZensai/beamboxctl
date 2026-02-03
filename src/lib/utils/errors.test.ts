@@ -1,11 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   BeamBoxError,
-  DeviceNotFoundError,
   ConnectionError,
+  DeviceNotFoundError,
+  DeviceResponseError,
   ImageProcessingError,
   UploadError,
-  DeviceResponseError,
 } from "./errors.ts";
 
 describe("Error Classes", () => {
@@ -18,9 +18,13 @@ describe("Error Classes", () => {
     test("all custom errors extend BeamBoxError", () => {
       expect(new DeviceNotFoundError() instanceof BeamBoxError).toBe(true);
       expect(new ConnectionError() instanceof BeamBoxError).toBe(true);
-      expect(new ImageProcessingError("test") instanceof BeamBoxError).toBe(true);
+      expect(new ImageProcessingError("test") instanceof BeamBoxError).toBe(
+        true,
+      );
       expect(new UploadError("test") instanceof BeamBoxError).toBe(true);
-      expect(new DeviceResponseError("test") instanceof BeamBoxError).toBe(true);
+      expect(new DeviceResponseError("test") instanceof BeamBoxError).toBe(
+        true,
+      );
     });
 
     test("instanceof works correctly", () => {

@@ -7,7 +7,7 @@
 export enum ResponseStatus {
   /**
    * Packet was successfully received and processed by the device
-   * 
+   *
    * Device sends this after successfully receiving each data chunk.
    * Client should proceed to send the next chunk.
    */
@@ -15,7 +15,7 @@ export enum ResponseStatus {
 
   /**
    * Packet transmission or processing failed
-   * 
+   *
    * Device sends this when a chunk was corrupted or couldn't be processed.
    * Client should retry sending the failed chunk.
    */
@@ -23,10 +23,10 @@ export enum ResponseStatus {
 
   /**
    * Error occurred (represented by ten '1' characters)
-   * 
+   *
    * Likely occurs when an error happens during packet handling,
    * like malformed data or unexpected conditions.
-   * 
+   *
    * Client should abort the upload and reconnect.
    */
   ERROR = "1111111111",

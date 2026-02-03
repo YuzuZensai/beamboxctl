@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
-import { BeamBoxUploader } from "../lib/core/beambox-uploader.ts";
-import { logger, LogEventType } from "../lib/utils/logger.ts";
-import { BeamBoxError } from "../lib/utils/errors.ts";
-import type { ConnectionStep } from "../components/index.ts";
 import { basename } from "node:path";
-import { updateStepStatus } from "../utils/app-utils.ts";
+import { useCallback, useEffect, useState } from "react";
 import type { UploadOptions } from "../cli/types.ts";
+import type { ConnectionStep } from "../components/index.ts";
+import { BeamBoxUploader } from "../lib/core/beambox-uploader.ts";
+import { BeamBoxError } from "../lib/utils/errors.ts";
+import { LogEventType, logger } from "../lib/utils/logger.ts";
+import { updateStepStatus } from "../utils/app-utils.ts";
 
 export function useUpload(options: UploadOptions, verbose: boolean) {
   const [status, setStatus] = useState<

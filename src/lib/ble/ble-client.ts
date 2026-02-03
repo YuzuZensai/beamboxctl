@@ -1,12 +1,16 @@
 import { EventEmitter } from "node:events";
+
 EventEmitter.defaultMaxListeners = 20;
 
 import { createBluetooth } from "node-ble";
 import type { BLEConfig, ProtocolConfig } from "../protocol/index.ts";
-import { PacketType } from "../protocol/index.ts";
-import { DeviceNotFoundError, ConnectionError } from "../utils/errors.ts";
-import { PayloadBuilder, ResponseParser } from "../protocol/index.ts";
-import { logger, LogEventType } from "../utils/logger.ts";
+import {
+  PacketType,
+  PayloadBuilder,
+  ResponseParser,
+} from "../protocol/index.ts";
+import { ConnectionError, DeviceNotFoundError } from "../utils/errors.ts";
+import { LogEventType, logger } from "../utils/logger.ts";
 
 /**
  * Handles notifications from the BeamBox device
@@ -151,7 +155,11 @@ class NotificationHandler {
    * Get all received notifications
    * @returns Array of notifications with timestamp, data, and parsed content
    */
-  public getNotifications(): Array<{ time: number; data: Buffer; parsed: any }> {
+  public getNotifications(): Array<{
+    time: number;
+    data: Buffer;
+    parsed: any;
+  }> {
     return this.allNotifications;
   }
 
@@ -559,7 +567,11 @@ export class BleUploader {
     return this.notificationHandler.deviceStatus;
   }
 
-  public getNotifications(): Array<{ time: number; data: Buffer; parsed: any }> {
+  public getNotifications(): Array<{
+    time: number;
+    data: Buffer;
+    parsed: any;
+  }> {
     return this.notificationHandler.getNotifications();
   }
 

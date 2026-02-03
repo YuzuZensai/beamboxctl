@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import { IMBHeaderBuilder } from "./imb-header.ts";
+import { describe, expect, test } from "bun:test";
 import { expectHex } from "../../../__tests__/utils/test-helpers.ts";
+import { IMBHeaderBuilder } from "./imb-header.ts";
 
 describe("IMBHeaderBuilder", () => {
   describe("build()", () => {
@@ -123,7 +123,7 @@ describe("IMBHeaderBuilder", () => {
         // IMB\x00 + 36(LE) + 1060(LE) + 11 + 0x00 + 0x0000 + 64(LE) + 32(LE) + 36(LE) + 1024(LE) + 0x00000000 + 0x00000000
         expectHex(
           header,
-          "494d420024000000240400000b0000004000200024000000000400000000000000000000"
+          "494d420024000000240400000b0000004000200024000000000400000000000000000000",
         );
       });
 
@@ -132,7 +132,7 @@ describe("IMBHeaderBuilder", () => {
         // IMB\x00 + 36(LE) + 136(LE) + 11 + 0x00 + 0x0000 + 128(LE) + 64(LE) + 36(LE) + 100(LE) + 0x00000000 + 0x00000000
         expectHex(
           header,
-          "494d420024000000880000000b0000008000400024000000640000000000000000000000"
+          "494d420024000000880000000b0000008000400024000000640000000000000000000000",
         );
       });
     });

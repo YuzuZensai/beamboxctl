@@ -1,9 +1,9 @@
-import { describe, test, expect } from "bun:test";
-import { ImageProcessor } from "./image-processor.ts";
-import { ImageProcessingError } from "../utils/errors.ts";
-import { DEFAULT_IMAGE_CONFIG } from "../protocol/interfaces/defaults.ts";
-import sharp from "sharp";
+import { describe, expect, test } from "bun:test";
 import path from "path";
+import sharp from "sharp";
+import { DEFAULT_IMAGE_CONFIG } from "../protocol/interfaces/defaults.ts";
+import { ImageProcessingError } from "../utils/errors.ts";
+import { ImageProcessor } from "./image-processor.ts";
 
 const fixturesPath = path.join(__dirname, "../../__tests__/fixtures");
 const testImagePath = path.join(fixturesPath, "test-1x1.png");

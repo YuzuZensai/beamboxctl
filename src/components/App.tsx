@@ -1,13 +1,9 @@
-import React from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
-import {
-  Header,
-  UploadProgress,
-  ConnectionStatus,
-} from "./index.ts";
-import { useUpload } from "../hooks/useUpload.ts";
+import type React from "react";
 import type { UploadOptions } from "../cli/types.ts";
+import { useUpload } from "../hooks/useUpload.ts";
+import { ConnectionStatus, Header, UploadProgress } from "./index.ts";
 
 export interface AppProps {
   options: UploadOptions;

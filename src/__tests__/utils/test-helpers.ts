@@ -8,10 +8,10 @@
 export function expectHex(actual: Buffer, expected: string): void {
   const actualHex = actual.toString("hex").toLowerCase();
   const expectedHex = expected.toLowerCase().replace(/\s/g, "");
-  
+
   if (actualHex !== expectedHex) {
     throw new Error(
-      `Hex mismatch:\nExpected: ${expectedHex}\nActual:   ${actualHex}`
+      `Hex mismatch:\nExpected: ${expectedHex}\nActual:   ${actualHex}`,
     );
   }
 }
@@ -80,7 +80,7 @@ export function calculateChecksum(data: Buffer): number {
   for (let i = 0; i < data.length; i++) {
     sum += data[i]!;
   }
-  return (-sum & 0xff);
+  return -sum & 0xff;
 }
 
 /**
@@ -111,7 +111,7 @@ export class MockLogger {
 
   hasLog(level: string, messageFragment: string): boolean {
     return this.logs.some(
-      (log) => log.level === level && log.message.includes(messageFragment)
+      (log) => log.level === level && log.message.includes(messageFragment),
     );
   }
 }

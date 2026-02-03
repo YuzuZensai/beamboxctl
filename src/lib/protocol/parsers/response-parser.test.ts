@@ -1,8 +1,8 @@
-import { describe, test, expect } from "bun:test";
-import { ResponseParser } from "./response-parser.ts";
+import { describe, expect, test } from "bun:test";
+import { hexToBuffer } from "../../../__tests__/utils/test-helpers.ts";
 import { PacketType } from "../packet-types.ts";
 import { ResponseStatus } from "../response-types.ts";
-import { hexToBuffer } from "../../../__tests__/utils/test-helpers.ts";
+import { ResponseParser } from "./response-parser.ts";
 
 const knownPackets = {
   getPacketSuccess: { text: "GetPacketSuccess" },
@@ -16,9 +16,9 @@ const knownPackets = {
       freespace: 13892,
       devname: "BeamBox",
       size: "64x32",
-      brand: 1
-    }
-  }
+      brand: 1,
+    },
+  },
 };
 
 describe("ResponseParser", () => {
@@ -109,7 +109,10 @@ describe("ResponseParser", () => {
     });
 
     test("JSON with \\xD1 bytes", () => {
-      const data = Buffer.from([0xd1, 0x7b, 0x22, 0x74, 0x79, 0x70, 0x65, 0x22, 0x3a, 0x31, 0x33, 0x7d, 0xd1]);
+      const data = Buffer.from([
+        0xd1, 0x7b, 0x22, 0x74, 0x79, 0x70, 0x65, 0x22, 0x3a, 0x31, 0x33, 0x7d,
+        0xd1,
+      ]);
       // \xD1{"type":13}\xD1
       const result = ResponseParser.parse(data);
       expect(result.jsonData).toEqual({ type: 13 });
@@ -178,7 +181,7 @@ describe("ResponseParser", () => {
       };
       const data = Buffer.from(JSON.stringify(statusJson));
       const result = ResponseParser.parse(data);
-      
+
       expect(result.isStatus).toBe(true);
       expect(result.deviceStatus).toBeDefined();
       expect(result.deviceStatus?.type).toBe(PacketType.DEVICE_STATUS);
@@ -192,7 +195,7 @@ describe("ResponseParser", () => {
     test("missing fields default to 0 or empty string", () => {
       const data = Buffer.from('{"type":13}');
       const result = ResponseParser.parse(data);
-      
+
       expect(result.deviceStatus?.type).toBe(PacketType.DEVICE_STATUS);
       expect(result.deviceStatus?.allspace).toBe(0);
       expect(result.deviceStatus?.freespace).toBe(0);
@@ -202,9 +205,11 @@ describe("ResponseParser", () => {
     });
 
     test("string numbers converted to Number", () => {
-      const data = Buffer.from('{"type":13,"allspace":"16384","freespace":"13892","brand":"1"}');
+      const data = Buffer.from(
+        '{"type":13,"allspace":"16384","freespace":"13892","brand":"1"}',
+      );
       const result = ResponseParser.parse(data);
-      
+
       expect(result.deviceStatus?.allspace).toBe(16384);
       expect(result.deviceStatus?.freespace).toBe(13892);
       expect(result.deviceStatus?.brand).toBe(1);
@@ -212,9 +217,11 @@ describe("ResponseParser", () => {
     });
 
     test("invalid number values default to 0", () => {
-      const data = Buffer.from('{"type":13,"allspace":"invalid","brand":"bad"}');
+      const data = Buffer.from(
+        '{"type":13,"allspace":"invalid","brand":"bad"}',
+      );
       const result = ResponseParser.parse(data);
-      
+
       expect(result.deviceStatus?.allspace).toBe(0);
       expect(result.deviceStatus?.brand).toBe(0);
     });
@@ -258,7 +265,7 @@ describe("ResponseParser", () => {
     test("parse GetPacketSuccess response", () => {
       const data = Buffer.from(knownPackets.getPacketSuccess.text);
       const result = ResponseParser.parse(data);
-      
+
       expect(result.rawText).toBe("GetPacketSuccess");
       expect(result.status).toBe(ResponseStatus.SUCCESS);
       expect(ResponseParser.isSuccess(result)).toBe(true);
@@ -267,7 +274,7 @@ describe("ResponseParser", () => {
     test("parse GetPacketFail response", () => {
       const data = Buffer.from(knownPackets.getPacketFail.text);
       const result = ResponseParser.parse(data);
-      
+
       expect(result.rawText).toBe("GetPacketFail");
       expect(result.status).toBe(ResponseStatus.FAIL);
       expect(ResponseParser.isFail(result)).toBe(true);
@@ -276,7 +283,7 @@ describe("ResponseParser", () => {
     test("parse error response", () => {
       const data = Buffer.from(knownPackets.errorResponse.text);
       const result = ResponseParser.parse(data);
-      
+
       expect(result.rawText).toBe("1111111111");
       expect(result.status).toBe(ResponseStatus.ERROR);
       expect(ResponseParser.isError(result)).toBe(true);
@@ -285,7 +292,7 @@ describe("ResponseParser", () => {
     test("parse device status response", () => {
       const data = hexToBuffer(knownPackets.deviceStatusResponse.hex);
       const result = ResponseParser.parse(data);
-      
+
       expect(result.isStatus).toBe(true);
       expect(result.jsonData).toEqual(knownPackets.deviceStatusResponse.json);
       expect(result.deviceStatus?.type).toBe(13);
