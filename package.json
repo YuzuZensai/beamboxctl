@@ -22,7 +22,7 @@
   "author": "Yuzu <yuzu@kirameki.cafe>",
   "license": "MIT",
   "dependencies": {
-    "@abandonware/noble": "^1.9.2-24",
+    "@stoprocent/noble": "^2.3.10",
     "commander": "^14.0.3",
     "ink": "^6.6.0",
     "ink-big-text": "^2.0.0",
@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/noble": "^0.0.44",
     "@types/react": "^19.2.10",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",

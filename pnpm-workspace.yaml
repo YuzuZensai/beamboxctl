@@ -1,3 +1,8 @@
+ignoredBuiltDependencies:
+  - '@serialport/bindings-cpp'
+  - '@stoprocent/bluetooth-hci-socket'
+  - '@stoprocent/noble'
+
 onlyBuiltDependencies:
   - '@abandonware/bluetooth-hci-socket'
   - '@abandonware/noble'

@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
 EventEmitter.defaultMaxListeners = 20;
 
-import noble from "@abandonware/noble";
-import type { Peripheral, Characteristic } from "@abandonware/noble";
+import noble from "@stoprocent/noble";
+import type { Peripheral, Characteristic } from "@stoprocent/noble";
 import type { BLEConfig, ProtocolConfig } from "../protocol/index.ts";
 import { PacketType } from "../protocol/index.ts";
 import { DeviceNotFoundError, ConnectionError } from "../utils/errors.ts";
@@ -297,6 +297,12 @@ export class BleUploader {
       return match[1]; // Return short UUID part
     }
 
+    // For short UUIDs (3-4 hex chars), pad with zeros to 4 chars for consistent comparison
+    // This handles cases like "1f1" vs "01f1"
+    if (cleaned.length <= 4) {
+      return cleaned.padStart(4, "0");
+    }
+
     return cleaned;
   }
 
@@ -425,10 +431,34 @@ export class BleUploader {
       // Stop scanning before connecting
       await noble.stopScanningAsync().catch(() => {});
 
+      // Check peripheral state before connecting
+      logger.debug(
+        `Peripheral state before connect: ${this.peripheral!.state}`,
+      );
+
+      // If already connected, disconnect first to ensure clean state
+      if (
+        this.peripheral!.state === "connected" ||
+        this.peripheral!.state === "connecting"
+      ) {
+        logger.debug(
+          "Device already connected/connecting, disconnecting first...",
+        );
+        await this.peripheral!.disconnectAsync().catch(() => {});
+        await this.sleep(500); // Brief delay after disconnect
+      }
+
       // Connect to device
       logger.info("Connecting to device...", LogEventType.CONNECT_START);
+      const connectStartTime = Date.now();
+
       await this.peripheral!.connectAsync();
-      logger.info("Connected to device", LogEventType.CONNECTED);
+
+      const connectDuration = Date.now() - connectStartTime;
+      logger.info(
+        `Connected to device (took ${connectDuration}ms)`,
+        LogEventType.CONNECTED,
+      );
 
       // Handle disconnect events
       this.peripheral!.once("disconnect", () => {

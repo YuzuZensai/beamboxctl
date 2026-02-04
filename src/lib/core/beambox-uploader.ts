@@ -32,6 +32,7 @@ export class BeamBoxUploader {
   private imageProcessor: ImageProcessor;
   private payloadBuilder: PayloadBuilder;
   private imageConfig: ImageConfig;
+  private verbose: boolean = false;
 
   constructor(
     deviceAddress?: string,
@@ -41,6 +42,7 @@ export class BeamBoxUploader {
     imageConfig?: ImageConfig,
     verbose: boolean = false,
   ) {
+    this.verbose = verbose;
     this.imageConfig = imageConfig ?? DEFAULT_IMAGE_CONFIG;
     this.ble = new BleUploader(
       deviceAddress ?? null,
@@ -315,18 +317,44 @@ export class BeamBoxUploader {
       // Wait for at least one status notification (PacketType.DEVICE_STATUS)
       const startTime = Date.now();
       const checkInterval = 100;
+      let statusReceived = false;
+      let lastNotificationCount = 0;
 
       while (Date.now() - startTime < timeoutMs) {
         const deviceStatus = this.ble.getDeviceStatus();
+        const notifications = this.ble.getNotifications();
+
+        // Log progress if we got new notifications
+        if (notifications.length > lastNotificationCount) {
+          logger.debug(`Received ${notifications.length} total notifications so far...`);
+          lastNotificationCount = notifications.length;
+        }
+
         if (deviceStatus && deviceStatus.type === 13) {
           logger.info(
             `Device status received: ${JSON.stringify(deviceStatus)}`,
           );
           logger.info("Device is ready for upload");
+          statusReceived = true;
           break;
         }
 
         await this.sleep(checkInterval);
+      }
+
+      if (!statusReceived) {
+        const notifications = this.ble.getNotifications();
+        logger.warning(
+          `Device status (type 13) not received within ${timeoutMs}ms timeout. Got ${notifications.length} notifications. Proceeding with available data.`,
+        );
+
+        // Log what we did receive if in verbose mode
+        if (notifications.length > 0 && this.verbose) {
+          logger.debug("Received notification types:");
+          notifications.forEach((n, i) => {
+            logger.debug(`  [${i}] type: ${n.parsed?.jsonData?.type || 'unknown'}, data: ${JSON.stringify(n.parsed?.jsonData || {})}`);
+          });
+        }
       }
 
       const notifications = this.ble.getNotifications();
