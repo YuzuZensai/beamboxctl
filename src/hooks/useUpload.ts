@@ -172,7 +172,12 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
             const success = await uploader.uploadImageFromFile(
               imagePath,
               targetSize,
-              (prog) => setProgress(prog),
+              (prog, status) => {
+                setProgress(prog);
+                if (status) {
+                  setMessage(`${i + 1}/${imagesToUpload.length}: ${status}`);
+                }
+              },
             );
 
             if (!success) {
@@ -198,16 +203,22 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
 
           let success: boolean;
           if (options.test) {
-            setMessage("Uploading image...");
-            success = await uploader.uploadCheckerboard(targetSize, 8, (prog) =>
-              setProgress(prog),
-            );
+            success = await uploader.uploadCheckerboard(targetSize, 8, (prog, status) => {
+              setProgress(prog);
+              if (status) {
+                setMessage(status);
+              }
+            });
           } else if (options.image) {
-            setMessage("Uploading image...");
             success = await uploader.uploadImageFromFile(
               options.image,
               targetSize,
-              (prog) => setProgress(prog),
+              (prog, status) => {
+                setProgress(prog);
+                if (status) {
+                  setMessage(status);
+                }
+              },
             );
           } else {
             throw new Error("No image provided");

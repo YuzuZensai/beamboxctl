@@ -25,6 +25,7 @@ class NotificationHandler {
 
   private notificationResolve: (() => void) | null = null;
   private statusResolve: (() => void) | null = null;
+  public expectedAckCount = 0;
 
   constructor(private verbose: boolean = false) {}
 
@@ -58,8 +59,14 @@ class NotificationHandler {
 
       if (ResponseParser.isSuccess(response)) {
         this.packetSuccessCount++;
-        logger.info("Device ack received: GetPacketSuccess");
-        if (this.waitingForAck && this.notificationResolve) {
+        logger.info(
+          `Device ack received: GetPacketSuccess (${this.packetSuccessCount}/${this.expectedAckCount})`,
+        );
+        if (
+          this.waitingForAck &&
+          this.notificationResolve &&
+          this.packetSuccessCount >= this.expectedAckCount
+        ) {
           this.notificationResolve();
           this.notificationResolve = null;
         }
@@ -191,6 +198,15 @@ class NotificationHandler {
     this.notificationResolve = null;
     this.statusResolve = null;
     this.errorFlag = false;
+  }
+
+  /**
+   * Set the expected number of acknowledgments to wait for
+   * @param count Number of packets that will be sent
+   */
+  public setExpectedAckCount(count: number): void {
+    this.expectedAckCount = count;
+    this.packetSuccessCount = 0;
   }
 }
 
@@ -577,13 +593,14 @@ export class BleUploader {
   }
 
   /**
-   * Send image data packets to device
+   * Send image data packets to device with batched acknowledgment waiting
    * @param fullData Complete image data payload
+   * @param onProgress Progress callback with (progress, status)
    * @returns True if successful
    */
   public async sendData(
     fullData: Buffer,
-    onProgress?: (progress: number) => void,
+    onProgress?: (progress: number, status?: string) => void,
   ): Promise<boolean> {
     if (!this.writeCharacteristic) {
       throw new ConnectionError("BLE client not connected");
@@ -592,11 +609,15 @@ export class BleUploader {
     const totalSize = fullData.length;
     const chunkSize = this.protocolConfig.chunkSize;
     const totalChunks = Math.ceil(totalSize / chunkSize);
+    const batchSize = 10; // Send 10 packets then wait for acks
+
+    // Set expected acknowledgment count before sending
+    this.notificationHandler.setExpectedAckCount(totalChunks);
 
     logger.info(
-      `Starting data transfer: ${totalChunks} packets`,
+      `Starting data transfer: ${totalChunks} packets in batches of ${batchSize}`,
       LogEventType.DATA_SEND_START,
-      { totalChunks, totalSize },
+      { totalChunks, totalSize, batchSize },
     );
 
     if (this.verbose) {
@@ -652,11 +673,55 @@ export class BleUploader {
 
       // Report progress
       if (onProgress) {
-        const progress = ((i + 1) / totalChunks) * 100;
-        onProgress(progress);
+        // Sending contributes 50% of this packet's progress
+        const sendProgress = ((i + 1) / totalChunks) * 50;
+        // Acks contribute the other 50%
+        const ackProgress =
+          (this.notificationHandler.packetSuccessCount / totalChunks) * 50;
+        const combinedProgress = sendProgress + ackProgress;
+
+        onProgress(
+          combinedProgress,
+          `Uploading (${i + 1} sent, ${this.notificationHandler.packetSuccessCount} confirmed)`,
+        );
       }
 
       await this.sleep(this.chunkDelay * 1000);
+
+      // Wait for acks every batchSize packets or at the end
+      if ((i + 1) % batchSize === 0 || i === totalChunks - 1) {
+        const expectedAcksAtThisPoint = i + 1;
+        const ackTimeout = 5.0; // 5 seconds to wait for batch acks
+        const startTime = Date.now();
+
+        logger.info(`Waiting for acknowledgments up to packet ${i + 1}...`);
+
+        while (
+          this.notificationHandler.packetSuccessCount < expectedAcksAtThisPoint
+        ) {
+          if ((Date.now() - startTime) / 1000 > ackTimeout) {
+            logger.warning(
+              `Ack timeout: expected ${expectedAcksAtThisPoint}, received ${this.notificationHandler.packetSuccessCount}`,
+            );
+            break;
+          }
+
+          if (onProgress) {
+            // Update progress as acks come in
+            const sendProgress = ((i + 1) / totalChunks) * 50;
+            const ackProgress =
+              (this.notificationHandler.packetSuccessCount / totalChunks) * 50;
+            const combinedProgress = sendProgress + ackProgress;
+
+            onProgress(
+              combinedProgress,
+              `Uploading (${i + 1} sent, ${this.notificationHandler.packetSuccessCount} confirmed)`,
+            );
+          }
+
+          await this.sleep(100);
+        }
+      }
     }
 
     logger.info("Data transfer complete", LogEventType.DATA_SEND_COMPLETE);
@@ -665,18 +730,79 @@ export class BleUploader {
   }
 
   /**
-   * Wait for device response after upload
-   * @param timeout Timeout in seconds
-   * @returns True if response received without error
+   * Wait for all remaining device acknowledgments after upload
+   * @param onProgress Optional progress callback
+   * @returns True if all acks received without error
    */
-  public async waitForResponse(timeout: number = 5.0): Promise<boolean> {
-    const responsePromise = this.notificationHandler.waitForNotification();
-    const timeoutPromise = this.sleep(timeout * 1000);
+  public async waitForResponse(
+    onProgress?: (progress: number, status?: string) => void,
+  ): Promise<boolean> {
+    this.notificationHandler.waitingForAck = true;
 
-    await Promise.race([responsePromise, timeoutPromise]);
+    // Dynamic timeout: 0.1s per expected packet, minimum 5s, maximum 30s
+    const dynamicTimeout = Math.min(
+      Math.max(this.notificationHandler.expectedAckCount * 0.1, 5.0),
+      30.0,
+    );
+
+    logger.info(
+      `Waiting for final acknowledgments (${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount}), timeout: ${dynamicTimeout.toFixed(1)}s`,
+    );
+
+    const startTime = Date.now();
+
+    while (
+      this.notificationHandler.packetSuccessCount <
+      this.notificationHandler.expectedAckCount
+    ) {
+      if ((Date.now() - startTime) / 1000 > dynamicTimeout) {
+        logger.warning(
+          `Timeout waiting for acks: received ${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount}`,
+        );
+        break;
+      }
+
+      if (onProgress) {
+        // All packets sent (50%), waiting for remaining acks (0-50%)
+        const sendProgress = 50; // All packets already sent
+        const ackProgress =
+          (this.notificationHandler.packetSuccessCount /
+            this.notificationHandler.expectedAckCount) *
+          50;
+        const combinedProgress = sendProgress + ackProgress;
+
+        onProgress(
+          combinedProgress,
+          `Uploading (${this.notificationHandler.expectedAckCount} sent, ${this.notificationHandler.packetSuccessCount} confirmed)`,
+        );
+      }
+
+      await this.sleep(100); // Check every 100ms
+    }
+
+    const success =
+      !this.notificationHandler.errorFlag &&
+      this.notificationHandler.packetSuccessCount >=
+        this.notificationHandler.expectedAckCount;
+
+    if (success) {
+      logger.info("All acknowledgments received");
+      if (onProgress) {
+        onProgress(100, "Upload complete");
+      }
+    } else if (
+      this.notificationHandler.packetSuccessCount <
+      this.notificationHandler.expectedAckCount
+    ) {
+      logger.warning(
+        `Incomplete acknowledgments: received ${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount}`,
+      );
+    }
+
+    this.notificationHandler.waitingForAck = false;
     this.notificationHandler.reset();
 
-    return !this.notificationHandler.errorFlag;
+    return success;
   }
 
   public hasError(): boolean {
