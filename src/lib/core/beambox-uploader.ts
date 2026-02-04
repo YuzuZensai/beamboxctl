@@ -7,9 +7,12 @@ import {
   DEFAULT_BLE_CONFIG,
   DEFAULT_PROTOCOL_CONFIG,
   DEFAULT_IMAGE_CONFIG,
+  PacketType,
 } from "../protocol/index.ts";
 import { BleUploader } from "../ble/ble-client.ts";
 import { ImageProcessor } from "../processing/image-processor.ts";
+import { MediaDetector } from "../processing/media-detector.ts";
+import { FrameExtractor } from "../processing/frame-extractor.ts";
 import { PayloadBuilder } from "../protocol/index.ts";
 import { logger } from "../utils/logger.ts";
 import { UploadError } from "../utils/errors.ts";
@@ -18,7 +21,7 @@ export interface UploadOptions {
   imagePath?: string;
   imageData?: Buffer;
   targetSize?: [number, number];
-  onProgress?: (progress: number) => void;
+  onProgress?: (progress: number, status?: string) => void;
 }
 
 /**
@@ -68,7 +71,12 @@ export class BeamBoxUploader {
   }
 
   /**
-   * Upload an image to the device
+   * Upload an image, GIF, or video to the device
+   *
+   * Automatically detects file type and uses appropriate upload method:
+   * - Static images: Type 6 (IMAGE) - single frame
+   * - Animated GIFs: Type 5 (DYNAMIC_AMBIENCE), frames extracted
+   * - Videos: Type 5 (DYNAMIC_AMBIENCE), frames extracted
    *
    * @param options Upload options
    * @returns True if upload successful
@@ -82,7 +90,25 @@ export class BeamBoxUploader {
 
     const effectiveSize = targetSize ?? this.imageConfig.defaultSize;
 
-    // Prepare JPEG data
+    // Detect file type if path provided
+    let isAnimated = false;
+    if (imagePath) {
+      const mediaInfo = await MediaDetector.detectFromFile(imagePath);
+      isAnimated = mediaInfo.type === "gif" || mediaInfo.type === "video";
+
+      logger.info(
+        `Detected file type: ${mediaInfo.type} (${mediaInfo.mimeType})`,
+      );
+
+      if (isAnimated) {
+        logger.info("File is animated, using Type 5 (DYNAMIC_AMBIENCE)");
+        return await this.uploadAnimation(imagePath, effectiveSize, onProgress);
+      } else {
+        logger.info("File is static image, using Type 6 (IMAGE)");
+      }
+    }
+
+    // Handle static image upload (Type 6)
     let jpegData: Buffer;
     if (imageData) {
       jpegData = imageData;
@@ -100,7 +126,10 @@ export class BeamBoxUploader {
     await this.sleep(1000);
 
     // Step 1: Send image info packet to announce upload
-    const imageInfoPayload = this.payloadBuilder.buildImageInfo();
+    const imageInfoPayload = this.payloadBuilder.buildImageInfo(
+      PacketType.IMAGE,
+      1,
+    );
     await this.ble.sendImageInfo(imageInfoPayload);
     logger.info("Sent image info packet, proceeding to data transfer");
 
@@ -108,6 +137,7 @@ export class BeamBoxUploader {
     const fullData = this.payloadBuilder.buildImageData(
       jpegData,
       effectiveSize,
+      PacketType.IMAGE,
     );
     const prefixLen = fullData.length - jpegData.length;
     logger.info(
@@ -115,19 +145,93 @@ export class BeamBoxUploader {
     );
 
     // Send data in chunks with protocol packets
-    const ok = await this.ble.sendData(fullData, onProgress);
+    const ok = await this.ble.sendData(fullData, PacketType.IMAGE, onProgress);
 
     if (!ok) {
       logger.error("Upload reported error");
       return false;
     }
 
-    // Wait for final response
-    if (!(await this.ble.waitForResponse(5.0))) {
+    // Wait for all acknowledgments
+    if (!(await this.ble.waitForResponse(onProgress))) {
       logger.error("Upload timeout waiting for response");
       return false;
     }
 
+    return true;
+  }
+
+  /**
+   * Upload an animated GIF or video as Type 5 (DYNAMIC_AMBIENCE)
+   *
+   * @param filePath Path to the GIF or video file
+   * @param targetSize Target size for frames
+   * @param onProgress Progress callback
+   * @returns True if upload successful
+   */
+  private async uploadAnimation(
+    filePath: string,
+    targetSize: [number, number],
+    onProgress?: (progress: number) => void,
+  ): Promise<boolean> {
+    // Extract frames from the file
+    logger.info("Extracting frames from animation...");
+    const frames = await FrameExtractor.extractFrames(filePath, {
+      maxFrames: 100,
+      targetSize,
+    });
+
+    logger.info(`Extracted ${frames.length} frames`);
+
+    // Calculate frame interval
+    const intervalMs = await FrameExtractor.calculateFrameInterval(
+      filePath,
+      frames.length,
+    );
+    logger.info(`Using frame interval: ${intervalMs}ms`);
+
+    // Wait for device to be ready
+    logger.info("Waiting for device to be fully ready...");
+    await this.sleep(1000);
+
+    // Step 1: Send image info packet (Type 6 for the info)
+    const imageInfoPayload = this.payloadBuilder.buildImageInfo(
+      PacketType.IMAGE,
+      1,
+    );
+    await this.ble.sendImageInfo(imageInfoPayload);
+    logger.info("Sent animation info packet, proceeding to data transfer");
+
+    // Step 2: Build and send animation data payload (Type 5)
+    const fullData = this.payloadBuilder.buildAnimationData(
+      frames,
+      intervalMs,
+      targetSize,
+    );
+
+    logger.info(
+      `Animation payload bytes: total=${fullData.length}, frames=${frames.length}`,
+    );
+
+    // Send data in chunks with protocol packets using DYNAMIC_AMBIENCE packet type
+    const ok = await this.ble.sendData(
+      fullData,
+      PacketType.DYNAMIC_AMBIENCE,
+      onProgress,
+    );
+
+    if (!ok) {
+      logger.error("Animation upload reported error");
+      return false;
+    }
+
+    // Wait for all acknowledgments
+    if (!(await this.ble.waitForResponse(onProgress))) {
+      logger.error("Animation upload timeout waiting for response");
+      return false;
+    }
+
+    logger.info("Animation upload completed successfully");
     return true;
   }
 
@@ -141,7 +245,7 @@ export class BeamBoxUploader {
   public async uploadImageFromFile(
     imagePath: string,
     targetSize?: [number, number],
-    onProgress?: (progress: number) => void,
+    onProgress?: (progress: number, status?: string) => void,
   ): Promise<boolean> {
     return await this.upload({ imagePath, targetSize, onProgress });
   }
@@ -156,7 +260,7 @@ export class BeamBoxUploader {
   public async uploadCheckerboard(
     targetSize?: [number, number],
     squares?: number,
-    onProgress?: (progress: number) => void,
+    onProgress?: (progress: number, status?: string) => void,
   ): Promise<boolean> {
     const effectiveSize = targetSize ?? this.imageConfig.defaultSize;
     const effectiveSquares = squares ?? this.imageConfig.checkerboardSquares;

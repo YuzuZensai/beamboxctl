@@ -1,6 +1,7 @@
 import type { ProtocolConfig } from "../interfaces/config.ts";
 import { PacketType } from "../packet-types.ts";
 import { IMBHeaderBuilder } from "./imb-header.ts";
+import { XV4HeaderBuilder, type XV4Frame } from "./xv4-header.ts";
 
 /**
  * Builder for creating protocol payloads and packets for image uploads
@@ -39,33 +40,33 @@ export class PayloadBuilder {
   }
 
   /**
-   * Build initialization payload for dynamic ambience mode (animations, gallery)
+   * Build animation data payload for dynamic ambience mode
    *
-   * Type 5 (DYNAMIC_AMBIENCE) is used for:
-   * - Video uploads (frames extracted via FFmpeg)
-   * - GIF uploads (frames separated)
-   * - Gallery/slideshow mode (multiple images converted to animation)
-   *
-   * Process:
-   * 1. Extract/convert frames using FFmpeg
-   * 2. Send info packet: {"type":6,"number":1} (uses buildImageInfo)
-   * 3. Send data packet: {"type":5,"data":<xV4_ANIMATION>}
-   *
-   * Animation data format (needs implementation):
-   * - Signature: "xV4" (0x78 0x56 0x34)
-   * - Frame timing: "output/50ms" or similar
-   * - Frame references: "frame_00001", "frame_00002", etc.
-   * - Multiple JPEG frames embedded
-   *
-   * @throws {Error} Dynamic ambience feature is not yet implemented
-   * @deprecated This feature is not implemented yet
+   * @param frames Array of frames with names and JPEG data
+   * @param intervalMs Frame interval in milliseconds (default: 50ms = 20fps)
+   * @param targetSize Image dimensions [width, height] (default: [368, 368])
+   * @returns Animation data payload bytes in format: {"type":5,"data":<xV4_BINARY>}
    */
-  public buildInitPayload(): Buffer {
-    throw new Error(
-      "Dynamic ambience (PacketType.DYNAMIC_AMBIENCE) is not yet implemented. " +
-        "This feature is required for video/GIF upload and gallery/slideshow mode. " +
-        "Only static single image upload (PacketType.IMAGE) is currently supported.",
+  public buildAnimationData(
+    frames: XV4Frame[],
+    intervalMs: number = 50,
+    targetSize: [number, number] = [368, 368],
+  ): Buffer {
+    const dataPrefix = Buffer.from(
+      `{"type":${PacketType.DYNAMIC_AMBIENCE},"data":`,
+      "utf-8",
     );
+    const dataSuffix = Buffer.from("}", "utf-8");
+
+    // Build xV4 animation container
+    const xv4Container = XV4HeaderBuilder.build(
+      frames,
+      intervalMs,
+      targetSize[0],
+      targetSize[1],
+    );
+
+    return Buffer.concat([dataPrefix, xv4Container, dataSuffix]);
   }
 
   /**

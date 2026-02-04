@@ -1,5 +1,5 @@
-import React from "react";
-import { Box, Text } from "ink";
+import React, { useEffect } from "react";
+import { Box, Text, useApp } from "ink";
 import Spinner from "ink-spinner";
 import { Header, Status, ConnectionStatus } from "./index.ts";
 import { useDeviceStatus } from "../hooks/useDeviceStatus.ts";
@@ -11,13 +11,22 @@ export interface StatusAppProps {
 }
 
 export const StatusApp: React.FC<StatusAppProps> = ({ options }) => {
-  const {
-    loading,
-    error,
-    deviceStatus,
-    notifications,
-    connectionSteps,
-  } = useDeviceStatus(options);
+  const { exit } = useApp();
+  const { loading, error, deviceStatus, notifications, connectionSteps } =
+    useDeviceStatus(options);
+
+  // Exit the app when done
+  useEffect(() => {
+    if (!loading) {
+      // Give time for the final render, then exit
+      const timer = setTimeout(() => {
+        exit();
+        // Force exit since noble keeps handles open
+        process.exit(error ? 1 : 0);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, error, exit]);
 
   return (
     <Box flexDirection="column" padding={1}>

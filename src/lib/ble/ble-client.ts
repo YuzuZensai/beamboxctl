@@ -595,11 +595,13 @@ export class BleUploader {
   /**
    * Send image data packets to device with batched acknowledgment waiting
    * @param fullData Complete image data payload
+   * @param packetType Packet type for header
    * @param onProgress Progress callback with (progress, status)
    * @returns True if successful
    */
   public async sendData(
     fullData: Buffer,
+    packetType: PacketType,
     onProgress?: (progress: number, status?: string) => void,
   ): Promise<boolean> {
     if (!this.writeCharacteristic) {
@@ -638,7 +640,7 @@ export class BleUploader {
         chunk,
         totalChunks,
         remainingPackets,
-        this.protocolConfig.cmdSubtype,
+        packetType,
       );
 
       logger.info(

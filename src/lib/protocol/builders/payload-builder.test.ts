@@ -3,6 +3,7 @@ import { PayloadBuilder } from "./payload-builder.ts";
 import { PacketType } from "../packet-types.ts";
 import { DEFAULT_PROTOCOL_CONFIG } from "../interfaces/defaults.ts";
 import type { ProtocolConfig } from "../interfaces/config.ts";
+import type { XV4Frame } from "./xv4-header.ts";
 import {
   expectHex,
   createTestJpeg,
@@ -142,19 +143,102 @@ describe("PayloadBuilder", () => {
     });
   });
 
-  describe("buildInitPayload()", () => {
-    test("throws error (not implemented)", () => {
-      expect(() => createBuilder().buildInitPayload()).toThrow();
+  describe("buildAnimationData()", () => {
+    test("format starts with {\"type\":5,\"data\"", () => {
+      const frames: XV4Frame[] = [
+        {
+          name: "frame_00001",
+          data: createTestJpeg(100),
+        },
+      ];
+      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const text = payload.toString("utf-8", 0, 15);
+      expect(text).toMatch(/^\{"type":5,"data/);
     });
 
-    test("error message mentions Type 5/DYNAMIC_AMBIENCE", () => {
-      expect(() => createBuilder().buildInitPayload()).toThrow(
-        /DYNAMIC_AMBIENCE|Type 5/i
-      );
+    test("has correct prefix", () => {
+      const frames: XV4Frame[] = [
+        {
+          name: "frame_00001",
+          data: createTestJpeg(100),
+        },
+      ];
+      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const prefix = payload.toString("utf-8", 0, 17);
+      expect(prefix).toBe('{"type":5,"data":');
     });
 
-    test("error message mentions not implemented", () => {
-      expect(() => createBuilder().buildInitPayload()).toThrow(/not.*implemented/i);
+    test("suffix is '}'", () => {
+      const frames: XV4Frame[] = [
+        {
+          name: "frame_00001",
+          data: createTestJpeg(100),
+        },
+      ];
+      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const lastByte = payload.toString("utf-8", payload.length - 1);
+      expect(lastByte).toBe("}");
+    });
+
+    test("xV4 header present after prefix", () => {
+      const frames: XV4Frame[] = [
+        {
+          name: "frame_00001",
+          data: createTestJpeg(100),
+        },
+      ];
+      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const prefixLen = '{"type":5,"data":'.length;
+      const xv4Sig = payload.toString("utf-8", prefixLen, prefixLen + 3);
+      expect(xv4Sig).toBe("xV4");
+    });
+
+    test("works with multiple frames", () => {
+      const frames: XV4Frame[] = [
+        {
+          name: "frame_00001",
+          data: createTestJpeg(100),
+        },
+        {
+          name: "frame_00002",
+          data: createTestJpeg(150),
+        },
+        {
+          name: "frame_00003",
+          data: createTestJpeg(120),
+        },
+      ];
+      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+
+      // Check it has proper structure
+      const prefixLen = '{"type":5,"data":'.length;
+      const xv4Sig = payload.toString("utf-8", prefixLen, prefixLen + 3);
+      expect(xv4Sig).toBe("xV4");
+
+      // Check frame count in xV4 header (offset 8, u32 LE)
+      const frameCount = payload.readUInt32LE(prefixLen + 8);
+      expect(frameCount).toBe(3);
+    });
+
+    test("custom interval creates correct timing string", () => {
+      const frames: XV4Frame[] = [
+        {
+          name: "frame_00001",
+          data: createTestJpeg(100),
+        },
+      ];
+      const payload = createBuilder().buildAnimationData(frames, 100, [368, 368]);
+
+      // The timing string is embedded in the xV4 container
+      const prefixLen = '{"type":5,"data":'.length;
+      const xv4Start = prefixLen;
+
+      // Timing string is at offset 16 (xV4 + ver + unk + pad + count + size)
+      const timingString = payload
+        .subarray(xv4Start + 16, xv4Start + 35)
+        .toString("utf8")
+        .replace(/\0.*$/, "");
+      expect(timingString).toBe("output/100ms");
     });
   });
 

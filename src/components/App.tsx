@@ -1,11 +1,7 @@
-import React from "react";
-import { Box, Text } from "ink";
+import React, { useEffect } from "react";
+import { Box, Text, useApp } from "ink";
 import Spinner from "ink-spinner";
-import {
-  Header,
-  UploadProgress,
-  ConnectionStatus,
-} from "./index.ts";
+import { Header, UploadProgress, ConnectionStatus } from "./index.ts";
 import { useUpload } from "../hooks/useUpload.ts";
 import type { UploadOptions } from "../cli/types.ts";
 
@@ -15,6 +11,7 @@ export interface AppProps {
 }
 
 export const App: React.FC<AppProps> = ({ options, verbose }) => {
+  const { exit } = useApp();
   const {
     status,
     message,
@@ -24,6 +21,19 @@ export const App: React.FC<AppProps> = ({ options, verbose }) => {
     uploadSteps,
     connectionSteps,
   } = useUpload(options, verbose);
+
+  // Exit the app when done
+  useEffect(() => {
+    if (status === "success" || status === "error") {
+      // Give time for the final render, then exit
+      const timer = setTimeout(() => {
+        exit();
+        // Force exit since noble keeps handles open
+        process.exit(status === "error" ? 1 : 0);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [status, exit]);
 
   return (
     <Box flexDirection="column" padding={1}>
