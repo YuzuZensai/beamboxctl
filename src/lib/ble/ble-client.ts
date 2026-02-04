@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 EventEmitter.defaultMaxListeners = 20;
 
-import { createBluetooth } from "node-ble";
+import noble from "@abandonware/noble";
+import type { Peripheral, Characteristic } from "@abandonware/noble";
 import type { BLEConfig, ProtocolConfig } from "../protocol/index.ts";
 import { PacketType } from "../protocol/index.ts";
 import { DeviceNotFoundError, ConnectionError } from "../utils/errors.ts";
@@ -151,7 +152,11 @@ class NotificationHandler {
    * Get all received notifications
    * @returns Array of notifications with timestamp, data, and parsed content
    */
-  public getNotifications(): Array<{ time: number; data: Buffer; parsed: any }> {
+  public getNotifications(): Array<{
+    time: number;
+    data: Buffer;
+    parsed: any;
+  }> {
     return this.allNotifications;
   }
 
@@ -193,16 +198,14 @@ class NotificationHandler {
  * Manages BLE connection and data transfer to BeamBox device
  */
 export class BleUploader {
-  private bluetooth: any;
-  private adapter: any;
-  private device: any;
-  private gattServer: any;
-  private writeCharacteristic: any;
-  private notifyCharacteristic: any;
+  private peripheral: Peripheral | null = null;
+  private writeCharacteristic: Characteristic | null = null;
+  private notifyCharacteristic: Characteristic | null = null;
   private notificationHandler: NotificationHandler;
   private payloadBuilder: PayloadBuilder;
   private chunkDelay: number;
   private verbose: boolean = false;
+  private isInitialized: boolean = false;
 
   constructor(
     private deviceAddress: string | null,
@@ -218,17 +221,67 @@ export class BleUploader {
   }
 
   /**
-   * Initialize Bluetooth adapter
+   * Initialize Bluetooth adapter and wait for powered on state
    */
   private async initBluetooth(): Promise<void> {
-    const { bluetooth, destroy } = createBluetooth();
-    this.bluetooth = { bluetooth, destroy };
-    this.adapter = await bluetooth.defaultAdapter();
-
-    const isPowered = await this.adapter.isPowered();
-    if (!isPowered) {
-      throw new ConnectionError("Bluetooth adapter is not powered on");
+    if (this.isInitialized) {
+      return;
     }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new ConnectionError("Bluetooth adapter initialization timeout"));
+      }, 10000);
+
+      const checkState = (state: string) => {
+        if (state === "poweredOn") {
+          clearTimeout(timeout);
+          this.isInitialized = true;
+          resolve();
+        } else if (state === "poweredOff") {
+          clearTimeout(timeout);
+          reject(new ConnectionError("Bluetooth adapter is not powered on"));
+        } else if (state === "unsupported") {
+          clearTimeout(timeout);
+          reject(
+            new ConnectionError("Bluetooth is not supported on this device"),
+          );
+        } else if (state === "unauthorized") {
+          clearTimeout(timeout);
+          reject(new ConnectionError("Bluetooth access not authorized"));
+        }
+      };
+
+      // Check current state first
+      if ((noble as any).state === "poweredOn") {
+        clearTimeout(timeout);
+        this.isInitialized = true;
+        resolve();
+        return;
+      }
+
+      noble.on("stateChange", checkState);
+    });
+  }
+
+  /**
+   * Normalize UUID for comparison
+   * Handles both full 128-bit UUIDs and short 16/32-bit UUIDs
+   * Short UUIDs use the Bluetooth Base UUID: 00000000-0000-1000-8000-00805f9b34fb
+   */
+  private normalizeUUID(uuid: string): string {
+    // Remove dashes and lowercase
+    const cleaned = uuid.replace(/-/g, "").toLowerCase();
+
+    // If it's a full 128-bit UUID using Bluetooth Base UUID, extract the short form
+    // Bluetooth Base UUID pattern: 0000XXXX-0000-1000-8000-00805f9b34fb
+    const bluetoothBasePattern = /^0000([0-9a-f]{4})00001000800000805f9b34fb$/;
+    const match = cleaned.match(bluetoothBasePattern);
+    if (match && match[1]) {
+      return match[1]; // Return short UUID part
+    }
+
+    return cleaned;
   }
 
   /**
@@ -236,46 +289,54 @@ export class BleUploader {
    * @returns Device address or null if not found
    */
   public async findDevice(): Promise<string | null> {
-    if (!this.adapter) {
-      await this.initBluetooth();
-    }
+    await this.initBluetooth();
 
     logger.info("Starting device scan...", LogEventType.SCAN_START);
 
-    // Start discovery
-    if (!(await this.adapter.isDiscovering())) {
-      await this.adapter.startDiscovery();
-    }
+    return new Promise((resolve) => {
+      const timeout = this.bleConfig.scanTimeout * 1000;
+      let found = false;
 
-    const startTime = Date.now();
-    const timeout = this.bleConfig.scanTimeout * 1000;
+      const timeoutId = setTimeout(async () => {
+        if (!found) {
+          await noble.stopScanningAsync();
+          noble.removeListener("discover", onDiscover);
+          resolve(null);
+        }
+      }, timeout);
 
-    while (Date.now() - startTime < timeout) {
-      const devices = await this.adapter.devices();
-
-      for (const deviceAddr of devices) {
-        const device = await this.adapter.getDevice(deviceAddr);
-        const name = await device.getName().catch(() => null);
+      const onDiscover = async (peripheral: Peripheral) => {
+        const name = peripheral.advertisement.localName;
 
         if (
           name &&
           name.toLowerCase().includes(this.bleConfig.deviceName.toLowerCase())
         ) {
-          await this.adapter.stopDiscovery();
+          found = true;
+          clearTimeout(timeoutId);
+          await noble.stopScanningAsync();
+          noble.removeListener("discover", onDiscover);
+
+          const address = peripheral.address || peripheral.id;
           logger.info(
-            `Found device: ${name} (${deviceAddr})`,
+            `Found device: ${name} (${address})`,
             LogEventType.DEVICE_FOUND,
-            { name, address: deviceAddr },
+            { name, address },
           );
-          return deviceAddr;
+
+          this.peripheral = peripheral;
+          resolve(address);
         }
-      }
+      };
 
-      await this.sleep(500);
-    }
+      noble.on("discover", onDiscover);
 
-    await this.adapter.stopDiscovery();
-    return null;
+      noble.startScanningAsync([], false).catch((err: Error) => {
+        clearTimeout(timeoutId);
+        logger.error(`Scan error: ${err}`);
+        resolve(null);
+      });
+    });
   }
 
   /**
@@ -286,37 +347,91 @@ export class BleUploader {
     try {
       await this.initBluetooth();
 
-      if (!this.deviceAddress) {
-        logger.info("Scanning for device...", LogEventType.SCAN_START);
-        this.deviceAddress = await this.findDevice();
+      if (!this.peripheral) {
         if (!this.deviceAddress) {
-          throw new DeviceNotFoundError(
-            `Could not find '${this.bleConfig.deviceName}'`,
+          logger.info("Scanning for device...", LogEventType.SCAN_START);
+          const address = await this.findDevice();
+          if (!address) {
+            throw new DeviceNotFoundError(
+              `Could not find '${this.bleConfig.deviceName}'`,
+            );
+          }
+          this.deviceAddress = address;
+        } else {
+          logger.info(
+            "Scanning for device by address...",
+            LogEventType.SCAN_START,
           );
+
+          const foundPeripheral = await new Promise<Peripheral | null>(
+            (resolve) => {
+              const timeout = this.bleConfig.scanTimeout * 1000;
+              let found = false;
+
+              const timeoutId = setTimeout(async () => {
+                if (!found) {
+                  await noble.stopScanningAsync();
+                  noble.removeListener("discover", onDiscover);
+                  resolve(null);
+                }
+              }, timeout);
+
+              const onDiscover = async (peripheral: Peripheral) => {
+                const address = peripheral.address || peripheral.id;
+                if (
+                  address.toLowerCase() === this.deviceAddress?.toLowerCase()
+                ) {
+                  found = true;
+                  clearTimeout(timeoutId);
+                  await noble.stopScanningAsync();
+                  noble.removeListener("discover", onDiscover);
+                  resolve(peripheral);
+                }
+              };
+
+              noble.on("discover", onDiscover);
+              noble.startScanningAsync([], false).catch(() => {
+                clearTimeout(timeoutId);
+                resolve(null);
+              });
+            },
+          );
+
+          if (!foundPeripheral) {
+            throw new DeviceNotFoundError(
+              `Could not find device with address '${this.deviceAddress}'`,
+            );
+          }
+          this.peripheral = foundPeripheral;
         }
       }
 
-      // Get device
-      this.device = await this.adapter.getDevice(this.deviceAddress);
+      // Stop scanning before connecting
+      await noble.stopScanningAsync().catch(() => {});
 
       // Connect to device
       logger.info("Connecting to device...", LogEventType.CONNECT_START);
-      await this.device.connect();
+      await this.peripheral!.connectAsync();
       logger.info("Connected to device", LogEventType.CONNECTED);
 
-      // Get GATT server
-      this.gattServer = await this.device.gatt();
+      // Handle disconnect events
+      this.peripheral!.once("disconnect", () => {
+        logger.info("Device disconnected");
+        this.peripheral = null;
+        this.writeCharacteristic = null;
+        this.notifyCharacteristic = null;
+      });
 
-      // Find the service and characteristics
+      // Discover services and characteristics
       await this.discoverCharacteristics();
 
       // Setup notifications
       if (this.notifyCharacteristic) {
-        await this.notifyCharacteristic.startNotifications();
+        await this.notifyCharacteristic.subscribeAsync();
 
-        // Listen for value changes
-        this.notifyCharacteristic.on("valuechanged", (buffer: Buffer) => {
-          this.notificationHandler.handleNotification(buffer);
+        // Listen for notifications
+        this.notifyCharacteristic.on("data", (data: Buffer) => {
+          this.notificationHandler.handleNotification(data);
         });
       }
 
@@ -338,6 +453,8 @@ export class BleUploader {
       return true;
     } catch (error) {
       logger.error(`Connection error: ${error}`);
+
+      await this.disconnect();
       return false;
     }
   }
@@ -346,39 +463,47 @@ export class BleUploader {
    * Discover required characteristics on the device
    */
   private async discoverCharacteristics(): Promise<void> {
-    // Get all services
-    const services = await this.gattServer.services();
+    if (!this.peripheral) {
+      throw new ConnectionError("Not connected to device");
+    }
 
-    for (const serviceUuid of services) {
-      const service = await this.gattServer.getPrimaryService(serviceUuid);
-      const characteristics = await service.characteristics();
+    const { services } =
+      await this.peripheral.discoverAllServicesAndCharacteristicsAsync();
 
-      for (const charUuid of characteristics) {
-        const char = await service.getCharacteristic(charUuid);
+    const normalizedWriteUuid = this.normalizeUUID(
+      this.bleConfig.writeCharacteristicUUID,
+    );
+    const normalizedNotifyUuid = this.normalizeUUID(
+      this.bleConfig.notifyCharacteristicUUID,
+    );
 
-        // Match normalized UUIDs
-        const normalizedCharUuid = charUuid.replace(/-/g, "").toLowerCase();
-        const normalizedWriteUuid = this.bleConfig.writeCharacteristicUUID
-          .replace(/-/g, "")
-          .toLowerCase();
-        const normalizedNotifyUuid = this.bleConfig.notifyCharacteristicUUID
-          .replace(/-/g, "")
-          .toLowerCase();
+    logger.debug(`Looking for write UUID: ${normalizedWriteUuid}`);
+    logger.debug(`Looking for notify UUID: ${normalizedNotifyUuid}`);
+
+    // Iterate through services and their characteristics
+    for (const service of services) {
+      logger.debug(`Service: ${service.uuid}`);
+
+      for (const char of service.characteristics) {
+        const normalizedCharUuid = this.normalizeUUID(char.uuid);
+        logger.debug(
+          `  Characteristic: ${char.uuid} (normalized: ${normalizedCharUuid})`,
+        );
 
         if (normalizedCharUuid === normalizedWriteUuid) {
           this.writeCharacteristic = char;
           logger.debug(
-            `Found write characteristic: ${charUuid}`,
+            `Found write characteristic: ${char.uuid}`,
             LogEventType.DISCOVER_CHAR,
-            { type: "write", uuid: charUuid },
+            { type: "write", uuid: char.uuid },
           );
         }
         if (normalizedCharUuid === normalizedNotifyUuid) {
           this.notifyCharacteristic = char;
           logger.debug(
-            `Found notify characteristic: ${charUuid}`,
+            `Found notify characteristic: ${char.uuid}`,
             LogEventType.DISCOVER_CHAR,
-            { type: "notify", uuid: charUuid },
+            { type: "notify", uuid: char.uuid },
           );
         }
       }
@@ -394,12 +519,17 @@ export class BleUploader {
    */
   public async disconnect(): Promise<void> {
     try {
-      if (this.device) {
-        await this.device.disconnect();
+      if (this.notifyCharacteristic) {
+        this.notifyCharacteristic.removeAllListeners();
+        await this.notifyCharacteristic.unsubscribeAsync().catch(() => {});
       }
-      if (this.bluetooth) {
-        this.bluetooth.destroy();
+      if (this.peripheral) {
+        this.peripheral.removeAllListeners();
+        await this.peripheral.disconnectAsync().catch(() => {});
       }
+
+      noble.removeAllListeners();
+      await noble.stopScanningAsync().catch(() => {});
     } catch (error) {
       logger.warning(`Error during disconnect: ${error}`);
     }
@@ -441,7 +571,8 @@ export class BleUploader {
 
     this.notificationHandler.logSentPacket(packet, "Image info packet");
 
-    await this.writeCharacteristic.writeValue(packet, { type: "command" });
+    // Write without response
+    await this.writeCharacteristic.writeAsync(packet, true);
     await this.sleep(this.protocolConfig.imageInfoDelay * 1000);
   }
 
@@ -511,7 +642,8 @@ export class BleUploader {
         }
       }
 
-      await this.writeCharacteristic.writeValue(packet, { type: "command" });
+      // Write without response
+      await this.writeCharacteristic.writeAsync(packet, true);
 
       if (this.notificationHandler.errorFlag) {
         logger.error("Device error flag set; aborting send.");
@@ -559,7 +691,11 @@ export class BleUploader {
     return this.notificationHandler.deviceStatus;
   }
 
-  public getNotifications(): Array<{ time: number; data: Buffer; parsed: any }> {
+  public getNotifications(): Array<{
+    time: number;
+    data: Buffer;
+    parsed: any;
+  }> {
     return this.notificationHandler.getNotifications();
   }
 
