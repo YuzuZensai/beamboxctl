@@ -62,11 +62,35 @@ export class ImageProcessor {
     }
   }
 
+  // Standard JFIF APP0 marker segment (18 bytes)
+  // This marker is required for some devices to properly decode the JPEG
+  // Structure: FF E0 + length (16) + 'JFIF\0' + version 1.1 + aspect ratio + density
+  private static readonly JFIF_MARKER = Buffer.from([
+    0xff,
+    0xe0, // APP0 marker
+    0x00,
+    0x10, // Length: 16 bytes (including these 2)
+    0x4a,
+    0x46,
+    0x49,
+    0x46,
+    0x00, // 'JFIF\0'
+    0x01,
+    0x01, // Version 1.1
+    0x00, // Aspect ratio units: 0 = no units
+    0x00,
+    0x01, // X density: 1
+    0x00,
+    0x01, // Y density: 1
+    0x00,
+    0x00, // No thumbnail
+  ]);
+
   /**
    * Prepare an image as JPEG bytes
    * @param imageInput Sharp instance or buffer
    * @param targetSize Target size [width, height]
-   * @returns JPEG image as Buffer
+   * @returns JPEG image as Buffer with JFIF marker
    */
   public async prepareImage(
     imageInput: sharp.Sharp | Buffer,
@@ -77,9 +101,10 @@ export class ImageProcessor {
         ? sharp(imageInput)
         : imageInput;
 
-      return await pipeline
+      const jpegData = await pipeline
         .resize(targetSize[0], targetSize[1], {
-          fit: "fill",
+          fit: "cover", // Use 'cover' to fill frame (official app does scale increase + crop)
+          position: "center",
           kernel: "lanczos3",
         })
         .toColorspace("srgb")
@@ -90,6 +115,14 @@ export class ImageProcessor {
           chromaSubsampling: "4:2:0",
         })
         .toBuffer();
+
+      // Inject JFIF marker after SOI (FF D8)
+      // Sharp doesn't include JFIF by default, but the device may require it? Just to be safe.
+      return Buffer.concat([
+        jpegData.subarray(0, 2), // SOI (FF D8)
+        ImageProcessor.JFIF_MARKER, // JFIF APP0 marker
+        jpegData.subarray(2), // Rest of JPEG data
+      ]);
     } catch (error) {
       throw new ImageProcessingError(`Failed to prepare image: ${error}`);
     }

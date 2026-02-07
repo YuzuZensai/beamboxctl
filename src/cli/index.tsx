@@ -3,6 +3,9 @@ import { logger, LogLevel } from "../lib/utils/logger.ts";
 import { statSync } from "node:fs";
 import { scanDirectoryForImages } from "../utils/app-utils.ts";
 import type { UploadOptions, StatusOptions } from "./types.ts";
+import { render } from "ink";
+import { App } from "../components/App.tsx";
+import { StatusApp } from "../components/StatusApp.tsx";
 
 export function setupCLI() {
   const program = new Command();
@@ -24,6 +27,7 @@ export function setupCLI() {
     )
     .option("--address <address>", "BLE device address (optional)")
     .option("--size <size>", "Target size WxH", "368x368")
+    .option("--animation-size <size>", "Animation size WxH", "360x360")
     .option("--test", "Upload 8x8 checkerboard test pattern", false)
     .option("--packet-delay <ms>", "Delay between packets in milliseconds", "20")
     .action(async (imageArg: string | undefined, options: UploadOptions) => {
@@ -90,8 +94,13 @@ export function setupCLI() {
         process.exit(1);
       }
 
-      const { App } = await import("../components/App.tsx");
-      const { render } = await import("ink");
+      if (!sizeRegex.test(options.animationSize)) {
+        console.error(
+          "Error: Invalid animation size format. Use WIDTHxHEIGHT (e.g., 360x360)",
+        );
+        process.exit(1);
+      }
+
       render(<App options={options} verbose={verbose} />);
     });
 
@@ -107,8 +116,6 @@ export function setupCLI() {
         logger.setLevel(LogLevel.DEBUG);
       }
 
-      const { StatusApp } = await import("../components/StatusApp.tsx");
-      const { render } = await import("ink");
       render(<StatusApp options={options} verbose={verbose} />);
     });
 

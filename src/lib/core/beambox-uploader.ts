@@ -21,6 +21,7 @@ export interface UploadOptions {
   imagePath?: string;
   imageData?: Buffer;
   targetSize?: [number, number];
+  animationSize?: [number, number];
   onProgress?: (progress: number, status?: string) => void;
 }
 
@@ -84,13 +85,16 @@ export class BeamBoxUploader {
    * @returns True if upload successful
    */
   public async upload(options: UploadOptions): Promise<boolean> {
-    const { imagePath, imageData, targetSize, onProgress } = options;
+    const { imagePath, imageData, targetSize, animationSize, onProgress } =
+      options;
 
     if (!imageData && !imagePath) {
       throw new UploadError("No image provided");
     }
 
     const effectiveSize = targetSize ?? this.imageConfig.defaultSize;
+    const effectiveAnimationSize =
+      animationSize ?? this.imageConfig.animationsSize;
 
     // Detect file type if path provided
     let isAnimated = false;
@@ -104,7 +108,11 @@ export class BeamBoxUploader {
 
       if (isAnimated) {
         logger.info("File is animated, using Type 5 (DYNAMIC_AMBIENCE)");
-        return await this.uploadAnimation(imagePath, effectiveSize, onProgress);
+        return await this.uploadAnimation(
+          imagePath,
+          effectiveAnimationSize,
+          onProgress,
+        );
       } else {
         logger.info("File is static image, using Type 6 (IMAGE)");
       }
@@ -176,20 +184,39 @@ export class BeamBoxUploader {
     targetSize: [number, number],
     onProgress?: (progress: number) => void,
   ): Promise<boolean> {
+    const animationSize: [number, number] = targetSize;
+    
     // Extract frames from the file
-    logger.info("Extracting frames from animation...");
+    logger.info(
+      `Extracting frames from animation at ${animationSize[0]}x${animationSize[1]}...`,
+    );
     const frames = await FrameExtractor.extractFrames(filePath, {
-      maxFrames: 100,
-      targetSize,
+      targetSize: animationSize,
     });
 
     logger.info(`Extracted ${frames.length} frames`);
 
+    // Ensure minimum 2 frames for device compatibility
+    // The xV4 format requires at least 2 frames
+    const MIN_FRAMES = 2;
+    if (frames.length < MIN_FRAMES) {
+      logger.info(`Padding from ${frames.length} to ${MIN_FRAMES} frames by duplicating last frame`);
+      while (frames.length < MIN_FRAMES) {
+        const lastFrame = frames[frames.length - 1]!;
+        frames.push({
+          name: `frame_${String(frames.length + 1).padStart(5, '0')}`,
+          data: lastFrame.data, // Reuse the same buffer
+        });
+      }
+      logger.info(`Padded to ${frames.length} frames`);
+    }
+
     // Calculate frame interval
-    const intervalMs = await FrameExtractor.calculateFrameInterval(
-      filePath,
-      frames.length,
-    );
+    // Based on analysis: working animations use 50ms interval
+    // TODO: Experiment with different intervals later
+    // The timing string must fit in 12 bytes ("output/XXms\0"), so intervals
+    // must be 2 digits (10-99). Using 50ms as it's proven to work.
+    const intervalMs = 50;
     logger.info(`Using frame interval: ${intervalMs}ms`);
 
     // Wait for device to be ready
@@ -208,7 +235,7 @@ export class BeamBoxUploader {
     const fullData = this.payloadBuilder.buildAnimationData(
       frames,
       intervalMs,
-      targetSize,
+      animationSize,
     );
 
     logger.info(
@@ -247,9 +274,10 @@ export class BeamBoxUploader {
   public async uploadImageFromFile(
     imagePath: string,
     targetSize?: [number, number],
+    animationSize?: [number, number],
     onProgress?: (progress: number, status?: string) => void,
   ): Promise<boolean> {
-    return await this.upload({ imagePath, targetSize, onProgress });
+    return await this.upload({ imagePath, targetSize, animationSize, onProgress });
   }
 
   /**

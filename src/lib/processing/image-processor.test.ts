@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 import { ImageProcessor } from "./image-processor.ts";
 import { ImageProcessingError } from "../utils/errors.ts";
 import { DEFAULT_IMAGE_CONFIG } from "../protocol/interfaces/defaults.ts";

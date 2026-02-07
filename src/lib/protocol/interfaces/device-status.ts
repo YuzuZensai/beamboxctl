@@ -27,7 +27,7 @@ export interface DeviceStatus {
   /**
    * Display resolution as "width,height" string
    *
-   * Example: "368,368" = 368x368 pixels
+   * Example: "368,368" = 368x368 pixels (static); animations use 360x360
    */
   size: string;
 

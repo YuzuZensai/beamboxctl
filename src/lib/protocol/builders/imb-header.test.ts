@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 import { IMBHeaderBuilder } from "./imb-header.ts";
 import { expectHex } from "../../../__tests__/utils/test-helpers.ts";
 

@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 import { PayloadBuilder } from "./payload-builder.ts";
 import { PacketType } from "../packet-types.ts";
 import { DEFAULT_PROTOCOL_CONFIG } from "../interfaces/defaults.ts";
@@ -151,7 +151,7 @@ describe("PayloadBuilder", () => {
           data: createTestJpeg(100),
         },
       ];
-      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const payload = createBuilder().buildAnimationData(frames, 50, [360, 360]);
       const text = payload.toString("utf-8", 0, 15);
       expect(text).toMatch(/^\{"type":5,"data/);
     });
@@ -163,7 +163,7 @@ describe("PayloadBuilder", () => {
           data: createTestJpeg(100),
         },
       ];
-      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const payload = createBuilder().buildAnimationData(frames, 50, [360, 360]);
       const prefix = payload.toString("utf-8", 0, 17);
       expect(prefix).toBe('{"type":5,"data":');
     });
@@ -175,7 +175,7 @@ describe("PayloadBuilder", () => {
           data: createTestJpeg(100),
         },
       ];
-      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const payload = createBuilder().buildAnimationData(frames, 50, [360, 360]);
       const lastByte = payload.toString("utf-8", payload.length - 1);
       expect(lastByte).toBe("}");
     });
@@ -187,7 +187,7 @@ describe("PayloadBuilder", () => {
           data: createTestJpeg(100),
         },
       ];
-      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const payload = createBuilder().buildAnimationData(frames, 50, [360, 360]);
       const prefixLen = '{"type":5,"data":'.length;
       const xv4Sig = payload.toString("utf-8", prefixLen, prefixLen + 3);
       expect(xv4Sig).toBe("xV4");
@@ -208,7 +208,7 @@ describe("PayloadBuilder", () => {
           data: createTestJpeg(120),
         },
       ];
-      const payload = createBuilder().buildAnimationData(frames, 50, [368, 368]);
+      const payload = createBuilder().buildAnimationData(frames, 50, [360, 360]);
 
       // Check it has proper structure
       const prefixLen = '{"type":5,"data":'.length;
@@ -220,25 +220,35 @@ describe("PayloadBuilder", () => {
       expect(frameCount).toBe(3);
     });
 
-    test("custom interval creates correct timing string", () => {
+    test("timing string uses interval value (clamped to 50-99)", () => {
       const frames: XV4Frame[] = [
         {
           name: "frame_00001",
           data: createTestJpeg(100),
         },
       ];
-      const payload = createBuilder().buildAnimationData(frames, 100, [368, 368]);
+      // 100ms interval gets clamped to 99ms for the timing string
+      const payload = createBuilder().buildAnimationData(frames, 100, [360, 360]);
 
       // The timing string is embedded in the xV4 container
       const prefixLen = '{"type":5,"data":'.length;
       const xv4Start = prefixLen;
 
-      // Timing string is at offset 16 (xV4 + ver + unk + pad + count + size)
+      // Timing string is at offset 16, 12 bytes total
       const timingString = payload
-        .subarray(xv4Start + 16, xv4Start + 35)
+        .subarray(xv4Start + 16, xv4Start + 28)
         .toString("utf8")
         .replace(/\0.*$/, "");
-      expect(timingString).toBe("output/100ms");
+      // Timing string must fit in 12 bytes, so intervals are clamped to 50-99
+      expect(timingString).toBe("output/99ms");
+
+      // Test with 50ms interval
+      const payload50 = createBuilder().buildAnimationData(frames, 50, [360, 360]);
+      const timingString50 = payload50
+        .subarray(xv4Start + 16, xv4Start + 28)
+        .toString("utf8")
+        .replace(/\0.*$/, "");
+      expect(timingString50).toBe("output/50ms");
     });
   });
 

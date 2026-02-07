@@ -40,16 +40,18 @@ export const DEFAULT_PROTOCOL_CONFIG: ProtocolConfig = {
 /**
  * Default image processing configuration
  *
- * Standard settings for processing images for the 368x368 BeamBox display.
+ * Standard settings for processing images for the BeamBox display.
  *
- * - defaultSize: [368, 368] - device native resolution
- * - jpegQuality: 70 - good balance between quality and size
+ * - defaultSize: [368, 368] - device native resolution for static images
+ * - animationsSize: [360, 360] - frame resolution for animations (Type 5)
+ * - jpegQuality: 80 - quality for static images (animations use 75)
  * - jpegOptimize: true - enable optimization for smaller files
  * - checkerboardSquares: 8 - for test pattern generation
  */
 export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
   defaultSize: [368, 368],
-  jpegQuality: 70,
+  animationsSize: [360, 360],
+  jpegQuality: 80,
   jpegOptimize: true,
   checkerboardSquares: 8,
 };

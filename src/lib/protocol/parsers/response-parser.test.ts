@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 import { ResponseParser } from "./response-parser.ts";
 import { PacketType } from "../packet-types.ts";
 import { ResponseStatus } from "../response-types.ts";

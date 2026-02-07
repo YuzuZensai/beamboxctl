@@ -110,6 +110,13 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
       try {
         const [width, height] = options.size.split("x").map(Number);
         const targetSize: [number, number] = [width!, height!];
+        const [animationWidth, animationHeight] = options.animationSize
+          .split("x")
+          .map(Number);
+        const animationSize: [number, number] = [
+          animationWidth!,
+          animationHeight!,
+        ];
         const packetDelaySeconds = options.packetDelay / 1000.0;
 
         const isBulk =
@@ -169,16 +176,18 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
             ]);
             setProgress(0);
 
-            const success = await uploader.uploadImageFromFile(
-              imagePath,
-              targetSize,
-              (prog, status) => {
-                setProgress(prog);
-                if (status) {
-                  setMessage(`${i + 1}/${imagesToUpload.length}: ${status}`);
-                }
-              },
-            );
+              const success = await uploader.uploadImageFromFile(
+                imagePath,
+                targetSize,
+                animationSize,
+                (prog: number, status?: string) => {
+                  setProgress(prog);
+                  if (status) {
+                    setMessage(`${i + 1}/${imagesToUpload.length}: ${status}`);
+                  }
+                },
+              );
+
 
             if (!success) {
               throw new Error(`Failed to upload ${fileName}`);
@@ -203,17 +212,22 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
 
           let success: boolean;
           if (options.test) {
-            success = await uploader.uploadCheckerboard(targetSize, 8, (prog, status) => {
-              setProgress(prog);
-              if (status) {
-                setMessage(status);
-              }
-            });
+            success = await uploader.uploadCheckerboard(
+              targetSize,
+              8,
+              (prog: number, status?: string) => {
+                setProgress(prog);
+                if (status) {
+                  setMessage(status);
+                }
+              },
+            );
           } else if (options.image) {
             success = await uploader.uploadImageFromFile(
               options.image,
               targetSize,
-              (prog, status) => {
+              animationSize,
+              (prog: number, status?: string) => {
                 setProgress(prog);
                 if (status) {
                   setMessage(status);

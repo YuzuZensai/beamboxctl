@@ -2,6 +2,7 @@ export interface UploadOptions {
   image?: string;
   address?: string;
   size: string;
+  animationSize: string;
   test: boolean;
   packetDelay: number;
   images?: string[];

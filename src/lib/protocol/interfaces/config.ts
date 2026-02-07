@@ -87,6 +87,13 @@ export interface ImageConfig {
   defaultSize: [number, number];
 
   /**
+   * Default frame dimensions [width, height] for animations
+   *
+   * Frames are resized to fit these dimensions
+   */
+  animationsSize: [number, number];
+
+  /**
    * JPEG compression quality (0-100)
    *
    * - 0: Lowest quality, smallest file

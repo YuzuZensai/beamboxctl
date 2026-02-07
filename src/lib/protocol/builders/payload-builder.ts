@@ -1,6 +1,7 @@
 import type { ProtocolConfig } from "../interfaces/config.ts";
 import { PacketType } from "../packet-types.ts";
 import { IMBHeaderBuilder } from "./imb-header.ts";
+import { DEFAULT_IMAGE_CONFIG } from "../interfaces/defaults.ts";
 import { XV4HeaderBuilder, type XV4Frame } from "./xv4-header.ts";
 
 /**
@@ -44,13 +45,13 @@ export class PayloadBuilder {
    *
    * @param frames Array of frames with names and JPEG data
    * @param intervalMs Frame interval in milliseconds (default: 50ms = 20fps)
-   * @param targetSize Image dimensions [width, height] (default: [368, 368])
+   * @param targetSize Image dimensions [width, height] (default: [360, 360])
    * @returns Animation data payload bytes in format: {"type":5,"data":<xV4_BINARY>}
    */
   public buildAnimationData(
     frames: XV4Frame[],
     intervalMs: number = 50,
-    targetSize: [number, number] = [368, 368],
+    targetSize: [number, number] = DEFAULT_IMAGE_CONFIG.animationsSize,
   ): Buffer {
     const dataPrefix = Buffer.from(
       `{"type":${PacketType.DYNAMIC_AMBIENCE},"data":`,
