@@ -70,6 +70,18 @@ export interface ProtocolConfig {
    * Maximum time (in seconds) to wait for a packet acknowledgment from the device
    */
   packetAckTimeout: number;
+
+  /**
+   * Maximum number of packets allowed per upload
+   * Value: 20000 packets max
+   */
+  maxPacketCount: number;
+
+  /**
+   * Maximum payload size in bytes allowed per upload
+   * Value: 2MB (2 * 1024 * 1024 bytes)
+   */
+  maxPayloadSize: number;
 }
 
 /**

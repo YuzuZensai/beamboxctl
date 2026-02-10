@@ -26,6 +26,8 @@ export const DEFAULT_BLE_CONFIG: BLEConfig = {
  * - packetDelay: 0.1s - prevents overwhelming device buffer
  * - imageInfoDelay: 0.01s - gives device time to prepare
  * - packetAckTimeout: 2.0s - reasonable wait for response
+ * - maxPacketCount: 20000 - seem to be the app limit
+ * - maxPayloadSize: 2MB - seem to be the app limit
  */
 export const DEFAULT_PROTOCOL_CONFIG: ProtocolConfig = {
   cmdType: CMD_TYPE,
@@ -35,6 +37,8 @@ export const DEFAULT_PROTOCOL_CONFIG: ProtocolConfig = {
   packetDelay: 0.1,
   imageInfoDelay: 0.01,
   packetAckTimeout: 2.0,
+  maxPacketCount: 20000,
+  maxPayloadSize: 2 * 1024 * 1024,
 };
 
 /**
