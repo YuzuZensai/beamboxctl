@@ -1,4 +1,5 @@
 export { Header } from './Header.tsx';
+export { ConfirmAnimatedUpload } from './ConfirmAnimatedUpload.tsx';
 export { UploadProgress } from './UploadProgress.tsx';
 export { Status } from './Status.tsx';
 export { ConnectionStatus, type ConnectionStep } from './ConnectionStatus.tsx';

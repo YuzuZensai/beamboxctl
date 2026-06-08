@@ -6,6 +6,7 @@ import type { UploadOptions, StatusOptions } from "./types.ts";
 import { render } from "ink";
 import { App } from "../components/App.tsx";
 import { StatusApp } from "../components/StatusApp.tsx";
+import { MediaDetector } from "../lib/processing/media-detector.ts";
 
 export function setupCLI() {
   const program = new Command();
@@ -101,7 +102,30 @@ export function setupCLI() {
         process.exit(1);
       }
 
-      render(<App options={options} verbose={verbose} />);
+      let confirmMediaType: "gif" | "video" | null = null;
+      if (options.image && !options.test) {
+        const filesToCheck = options.isBulk
+          ? (options.images ?? [])
+          : [options.image];
+
+        for (const file of filesToCheck) {
+          const info = await MediaDetector.detectFromFile(file).catch(
+            () => null,
+          );
+          if (info?.type === "gif" || info?.type === "video") {
+            confirmMediaType = info.type;
+            break;
+          }
+        }
+      }
+
+      render(
+        <App
+          options={options}
+          verbose={verbose}
+          confirmMediaType={confirmMediaType}
+        />,
+      );
     });
 
   program

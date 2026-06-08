@@ -1,16 +1,45 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text, useApp } from "ink";
 import Spinner from "ink-spinner";
-import { Header, UploadProgress, ConnectionStatus } from "./index.ts";
+import {
+  Header,
+  UploadProgress,
+  ConnectionStatus,
+  ConfirmAnimatedUpload,
+} from "./index.ts";
 import { useUpload } from "../hooks/useUpload.ts";
 import type { UploadOptions } from "../cli/types.ts";
 
 export interface AppProps {
   options: UploadOptions;
   verbose: boolean;
+  /** Set when the upload contains a GIF/video and requires user confirmation */
+  confirmMediaType?: "gif" | "video" | null;
 }
 
-export const App: React.FC<AppProps> = ({ options, verbose }) => {
+export const App: React.FC<AppProps> = ({
+  options,
+  verbose,
+  confirmMediaType,
+}) => {
+  const [confirmed, setConfirmed] = useState(!confirmMediaType);
+
+  if (!confirmed && confirmMediaType) {
+    return (
+      <ConfirmAnimatedUpload
+        mediaType={confirmMediaType}
+        onConfirm={() => setConfirmed(true)}
+      />
+    );
+  }
+
+  return <UploadFlow options={options} verbose={verbose} />;
+};
+
+const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
+  options,
+  verbose,
+}) => {
   const { exit } = useApp();
   const {
     status,
