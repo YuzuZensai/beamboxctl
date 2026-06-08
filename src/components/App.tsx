@@ -44,7 +44,8 @@ const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
   const {
     status,
     message,
-    progress,
+    sendProgress,
+    confirmProgress,
     currentFileIndex,
     totalFiles,
     uploadSteps,
@@ -96,7 +97,8 @@ const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
           <UploadProgress
             status={status}
             message={message}
-            progress={progress}
+            sendProgress={sendProgress}
+            confirmProgress={confirmProgress}
           />
           <ConnectionStatus steps={uploadSteps} />
         </Box>
@@ -107,7 +109,8 @@ const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
           <UploadProgress
             status={status}
             message={message}
-            progress={progress}
+            sendProgress={sendProgress}
+            confirmProgress={confirmProgress}
           />
           <Box marginTop={1}>
             <Text color="green">Device is ready to use!</Text>
@@ -120,7 +123,8 @@ const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
           <UploadProgress
             status={status}
             message={message}
-            progress={progress}
+            sendProgress={sendProgress}
+            confirmProgress={confirmProgress}
           />
           <Box marginTop={1}>
             <Text color="red">Please check your device and try again.</Text>

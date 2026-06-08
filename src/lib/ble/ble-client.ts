@@ -510,13 +510,13 @@ export class BleUploader {
    * Send image data packets to device with batched acknowledgment waiting
    * @param fullData Complete image data payload
    * @param packetType Packet type for header
-   * @param onProgress Progress callback with (progress, status)
+   * @param onProgress Progress callback with (sendProgress 0-100, confirmProgress 0-100, status)
    * @returns True if successful
    */
   public async sendData(
     fullData: Buffer,
     packetType: PacketType,
-    onProgress?: (progress: number, status?: string) => void,
+    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
   ): Promise<boolean> {
     if (!this.writeCharacteristic) {
       throw new ConnectionError("BLE client not connected");
@@ -589,17 +589,9 @@ export class BleUploader {
 
       // Report progress
       if (onProgress) {
-        // Sending contributes 50% of this packet's progress
-        const sendProgress = ((i + 1) / totalChunks) * 50;
-        // Acks contribute the other 50%
-        const ackProgress =
-          (this.notificationHandler.packetSuccessCount / totalChunks) * 50;
-        const combinedProgress = sendProgress + ackProgress;
-
-        onProgress(
-          combinedProgress,
-          `Sending: (${i + 1}/${totalChunks} packets)`,
-        );
+        const sendProgress = ((i + 1) / totalChunks) * 100;
+        const confirmProgress = (this.notificationHandler.packetSuccessCount / totalChunks) * 100;
+        onProgress(sendProgress, confirmProgress, `Sending: (${i + 1}/${totalChunks} packets)`);
       }
 
       await this.sleep(this.chunkDelay * 1000);
@@ -623,16 +615,9 @@ export class BleUploader {
           }
 
           if (onProgress) {
-            // Update progress as acks come in
-            const sendProgress = ((i + 1) / totalChunks) * 50;
-            const ackProgress =
-              (this.notificationHandler.packetSuccessCount / totalChunks) * 50;
-            const combinedProgress = sendProgress + ackProgress;
-
-            onProgress(
-              combinedProgress,
-              `Sending: (${this.notificationHandler.packetSuccessCount}/${totalChunks} packets)`,
-            );
+            const sendProgress = ((i + 1) / totalChunks) * 100;
+            const confirmProgress = (this.notificationHandler.packetSuccessCount / totalChunks) * 100;
+            onProgress(sendProgress, confirmProgress, `Sending: (${this.notificationHandler.packetSuccessCount}/${totalChunks} packets)`);
           }
 
           await this.sleep(100);
@@ -651,7 +636,7 @@ export class BleUploader {
    * @returns True if all acks received without error
    */
   public async waitForResponse(
-    onProgress?: (progress: number, status?: string) => void,
+    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
   ): Promise<boolean> {
     this.notificationHandler.waitingForAck = true;
 
@@ -679,18 +664,11 @@ export class BleUploader {
       }
 
       if (onProgress) {
-        // All packets sent (50%), waiting for remaining acks (0-50%)
-        const sendProgress = 50; // All packets already sent
-        const ackProgress =
+        const confirmProgress =
           (this.notificationHandler.packetSuccessCount /
             this.notificationHandler.expectedAckCount) *
-          50;
-        const combinedProgress = sendProgress + ackProgress;
-
-        onProgress(
-          combinedProgress,
-          `Confirming: (${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount} packets)`,
-        );
+          100;
+        onProgress(100, confirmProgress, `Confirming: (${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount} packets)`);
       }
 
       await this.sleep(100); // Check every 100ms
@@ -704,7 +682,7 @@ export class BleUploader {
     if (success) {
       logger.info("All acknowledgments received");
       if (onProgress) {
-        onProgress(100, "Upload complete");
+        onProgress(100, 100, "Upload complete");
       }
     } else if (
       this.notificationHandler.packetSuccessCount <

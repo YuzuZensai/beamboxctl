@@ -24,7 +24,7 @@ export interface UploadOptions {
   imageData?: Buffer;
   targetSize?: [number, number];
   animationSize?: [number, number];
-  onProgress?: (progress: number, status?: string) => void;
+  onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void;
   dumpDir?: string;
 }
 
@@ -358,7 +358,7 @@ export class BeamBoxUploader {
   private async uploadAnimation(
     filePath: string,
     targetSize: [number, number],
-    onProgress?: (progress: number) => void,
+    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
     dumpDir?: string,
   ): Promise<boolean> {
     const animationSize: [number, number] = targetSize;
@@ -476,7 +476,7 @@ export class BeamBoxUploader {
     imagePath: string,
     targetSize?: [number, number],
     animationSize?: [number, number],
-    onProgress?: (progress: number, status?: string) => void,
+    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
     dumpDir?: string,
   ): Promise<boolean> {
     return await this.upload({
@@ -498,7 +498,7 @@ export class BeamBoxUploader {
   public async uploadCheckerboard(
     targetSize?: [number, number],
     squares?: number,
-    onProgress?: (progress: number, status?: string) => void,
+    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
     dumpDir?: string,
   ): Promise<boolean> {
     const effectiveSize = targetSize ?? this.imageConfig.defaultSize;

@@ -5,28 +5,45 @@ import Spinner from "ink-spinner";
 interface UploadProgressProps {
   status: "connecting" | "uploading" | "success" | "error";
   message?: string;
-  progress?: number;
+  sendProgress?: number;
+  confirmProgress?: number;
 }
 
-const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
-  const percentage = Math.round(progress);
-  const barLength = 30;
-  const filledLength = Math.round((progress / 100) * barLength);
-  const filled = "█".repeat(filledLength);
-  const empty = "░".repeat(barLength - filledLength);
+const BAR_LENGTH = 30;
 
-  const getBarColor = () => {
-    if (percentage < 100) return "cyan";
-    return "green";
-  };
+const ShadowProgressBar: React.FC<{
+  sendProgress: number;
+  confirmProgress: number;
+}> = ({ sendProgress, confirmProgress }) => {
+  const sentFilled = Math.round((sendProgress / 100) * BAR_LENGTH);
+  const confirmFilled = Math.round((confirmProgress / 100) * BAR_LENGTH);
+  const pct = Math.round(sendProgress);
 
-  const barContent = filled + empty;
+  const bar = Array.from({ length: BAR_LENGTH }, (_, i) => {
+    if (i < confirmFilled)
+      return (
+        <Text key={i} color="green">
+          █
+        </Text>
+      );
+    if (i < sentFilled)
+      return (
+        <Text key={i} color="cyan">
+          █
+        </Text>
+      );
+    return (
+      <Text key={i} color="dim">
+        ░
+      </Text>
+    );
+  });
 
   return (
     <Box marginTop={1}>
       <Text color="dim">[</Text>
-      <Text color={getBarColor()}>{barContent}</Text>
-      <Text color="dim">] {percentage}%</Text>
+      {bar}
+      <Text color="dim">] {pct}%</Text>
     </Box>
   );
 };
@@ -34,7 +51,8 @@ const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
 export const UploadProgress: React.FC<UploadProgressProps> = ({
   status,
   message,
-  progress,
+  sendProgress = 0,
+  confirmProgress = 0,
 }) => {
   const getStatusColor = () => {
     switch (status) {
@@ -49,18 +67,18 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({
     }
   };
 
-  const getStatusIcon = () => {
-    switch (status) {
-      case "success":
-        return "✓";
-      case "error":
-        return "✗";
-      default:
-        return null;
-    }
-  };
+  const statusIcon =
+    status === "success" ? "✓" : status === "error" ? "✗" : null;
 
-  const statusIcon = getStatusIcon();
+  const showBar = status === "uploading" || status === "success";
+  const effectiveSend = status === "success" ? 100 : sendProgress;
+  const effectiveConfirm = status === "success" ? 100 : confirmProgress;
+
+  const isConfirming =
+    status === "uploading" && sendProgress >= 100 && confirmProgress < 100;
+  const displayMessage = isConfirming
+    ? (message?.replace(/^Sending:/, "Confirming:") ?? "Confirming...")
+    : message || status.toUpperCase();
 
   return (
     <Box flexDirection="column" paddingY={1}>
@@ -73,12 +91,15 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({
         {statusIcon && <Text color={getStatusColor()}>{statusIcon}</Text>}
         <Box marginLeft={1}>
           <Text color={getStatusColor()} bold>
-            {message || status.toUpperCase()}
+            {displayMessage}
           </Text>
         </Box>
       </Box>
-      {progress !== undefined && status === "uploading" && (
-        <ProgressBar progress={progress} />
+      {showBar && (
+        <ShadowProgressBar
+          sendProgress={effectiveSend}
+          confirmProgress={effectiveConfirm}
+        />
       )}
     </Box>
   );

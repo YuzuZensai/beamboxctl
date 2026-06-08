@@ -12,7 +12,8 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
     "connecting" | "uploading" | "success" | "error"
   >("connecting");
   const [message, setMessage] = useState<string>("Initializing...");
-  const [progress, setProgress] = useState<number>(0);
+  const [sendProgress, setSendProgress] = useState<number>(0);
+  const [confirmProgress, setConfirmProgress] = useState<number>(0);
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
   const [totalFiles, setTotalFiles] = useState<number>(1);
 
@@ -174,14 +175,16 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
               },
               { id: "complete", label: "Finalizing", status: "pending" },
             ]);
-            setProgress(0);
+            setSendProgress(0);
+            setConfirmProgress(0);
 
               const success = await uploader.uploadImageFromFile(
                 imagePath,
                 targetSize,
                 animationSize,
-                (prog: number, status?: string) => {
-                  setProgress(prog);
+                (send: number, confirm: number, status?: string) => {
+                  setSendProgress(send);
+                  setConfirmProgress(confirm);
                   if (status) {
                     setMessage(`${i + 1}/${imagesToUpload.length}: ${status}`);
                   }
@@ -215,8 +218,9 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
             success = await uploader.uploadCheckerboard(
               targetSize,
               8,
-              (prog: number, status?: string) => {
-                setProgress(prog);
+              (send: number, confirm: number, status?: string) => {
+                setSendProgress(send);
+                setConfirmProgress(confirm);
                 if (status) {
                   setMessage(status);
                 }
@@ -227,8 +231,9 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
               options.image,
               targetSize,
               animationSize,
-              (prog: number, status?: string) => {
-                setProgress(prog);
+              (send: number, confirm: number, status?: string) => {
+                setSendProgress(send);
+                setConfirmProgress(confirm);
                 if (status) {
                   setMessage(status);
                 }
@@ -271,7 +276,8 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
   return {
     status,
     message,
-    progress,
+    sendProgress,
+    confirmProgress,
     currentFileIndex,
     totalFiles,
     uploadSteps,
