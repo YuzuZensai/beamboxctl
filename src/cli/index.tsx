@@ -1,12 +1,80 @@
 import { Command } from "commander";
 import { logger, LogLevel } from "../lib/utils/logger.ts";
 import { statSync } from "node:fs";
+import { join, basename } from "node:path";
 import { scanDirectoryForImages } from "../utils/app-utils.ts";
 import type { UploadOptions, StatusOptions } from "./types.ts";
 import { render } from "ink";
 import { App } from "../components/App.tsx";
 import { StatusApp } from "../components/StatusApp.tsx";
 import { MediaDetector } from "../lib/processing/media-detector.ts";
+import { BeamBoxUploader } from "../lib/core/beambox-uploader.ts";
+
+async function runDump(options: UploadOptions, verbose: boolean) {
+  if (verbose) {
+    logger.setLevel(LogLevel.DEBUG);
+  }
+
+  const [width, height] = options.size.split("x").map(Number);
+  const targetSize: [number, number] = [width!, height!];
+  const [animationWidth, animationHeight] = options.animationSize
+    .split("x")
+    .map(Number);
+  const animationSize: [number, number] = [animationWidth!, animationHeight!];
+
+  const uploader = new BeamBoxUploader(
+    options.address,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    verbose,
+  );
+
+  const filesToDump = options.isBulk ? (options.images ?? []) : [];
+  const dumpRoot = options.dump!;
+
+  try {
+    if (options.test) {
+      console.log(`Dumping checkerboard test pattern to ${dumpRoot}`);
+      await uploader.uploadCheckerboard(targetSize, 8, undefined, dumpRoot);
+      console.log("Dump complete. No device connection was made.");
+      return;
+    }
+
+    if (filesToDump.length > 0) {
+      for (const imagePath of filesToDump) {
+        const fileName = basename(imagePath);
+        const dumpDir = join(dumpRoot, fileName);
+        console.log(`Dumping ${fileName} -> ${dumpDir}`);
+        await uploader.uploadImageFromFile(
+          imagePath,
+          targetSize,
+          animationSize,
+          undefined,
+          dumpDir,
+        );
+      }
+    } else if (options.image) {
+      console.log(`Dumping ${options.image} -> ${dumpRoot}`);
+      await uploader.uploadImageFromFile(
+        options.image,
+        targetSize,
+        animationSize,
+        undefined,
+        dumpRoot,
+      );
+    } else {
+      console.error("Error: Either provide an image path or use --test flag");
+      process.exit(1);
+    }
+
+    console.log("Dump complete. No device connection was made.");
+  } catch (error) {
+    console.error(`Dump failed: ${error}`);
+    process.exit(1);
+  }
+}
 
 export function setupCLI() {
   const program = new Command();
@@ -31,6 +99,10 @@ export function setupCLI() {
     .option("--animation-size <size>", "Animation size WxH", "360x360")
     .option("--test", "Upload 8x8 checkerboard test pattern", false)
     .option("--packet-delay <ms>", "Delay between packets in milliseconds", "20")
+    .option(
+      "--dump <dir>",
+      "Dry run: build the payload and write it to <dir> instead of uploading (no device connection made)",
+    )
     .action(async (imageArg: string | undefined, options: UploadOptions) => {
       const globalOptions = program.opts() as { verbose: boolean };
       const verbose = globalOptions.verbose;
@@ -100,6 +172,11 @@ export function setupCLI() {
           "Error: Invalid animation size format. Use WIDTHxHEIGHT (e.g., 360x360)",
         );
         process.exit(1);
+      }
+
+      if (options.dump) {
+        await runDump(options, verbose);
+        return;
       }
 
       let confirmMediaType: "gif" | "video" | null = null;

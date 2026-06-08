@@ -7,6 +7,7 @@ export interface UploadOptions {
   packetDelay: number;
   images?: string[];
   isBulk?: boolean;
+  dump?: string;
 }
 
 export interface StatusOptions {

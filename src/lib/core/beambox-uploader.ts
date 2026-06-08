@@ -16,6 +16,8 @@ import { FrameExtractor } from "../processing/frame-extractor.ts";
 import { PayloadBuilder } from "../protocol/index.ts";
 import { logger } from "../utils/logger.ts";
 import { UploadError } from "../utils/errors.ts";
+import { mkdir, writeFile } from "fs/promises";
+import { join } from "path";
 
 export interface UploadOptions {
   imagePath?: string;
@@ -23,6 +25,7 @@ export interface UploadOptions {
   targetSize?: [number, number];
   animationSize?: [number, number];
   onProgress?: (progress: number, status?: string) => void;
+  dumpDir?: string;
 }
 
 /**
@@ -85,8 +88,14 @@ export class BeamBoxUploader {
    * @returns True if upload successful
    */
   public async upload(options: UploadOptions): Promise<boolean> {
-    const { imagePath, imageData, targetSize, animationSize, onProgress } =
-      options;
+    const {
+      imagePath,
+      imageData,
+      targetSize,
+      animationSize,
+      onProgress,
+      dumpDir,
+    } = options;
 
     if (!imageData && !imagePath) {
       throw new UploadError("No image provided");
@@ -112,6 +121,7 @@ export class BeamBoxUploader {
           imagePath,
           effectiveAnimationSize,
           onProgress,
+          dumpDir,
         );
       } else {
         logger.info("File is static image, using Type 6 (IMAGE)");
@@ -131,10 +141,6 @@ export class BeamBoxUploader {
       throw new UploadError("No image provided");
     }
 
-    // Wait a moment after connection to ensure device is fully ready
-    logger.info("Waiting for device to be fully ready...");
-    await this.sleep(1000);
-
     // Build image data payload
     const fullData = this.payloadBuilder.buildImageData(
       jpegData,
@@ -149,6 +155,31 @@ export class BeamBoxUploader {
     // Validate against protocol limits
     this.validatePayloadLimits(fullData.length);
 
+    // Step 1: Build image info packet to announce upload
+    const imageInfoPayload = this.payloadBuilder.buildImageInfo(
+      PacketType.IMAGE,
+      1,
+    );
+
+    if (dumpDir) {
+      await this.dumpPayload(dumpDir, {
+        kind: "image",
+        packetType: PacketType.IMAGE,
+        infoPayload: imageInfoPayload,
+        fullData,
+        targetSize: effectiveSize,
+        extra: {
+          jpegBytes: jpegData.length,
+          headerAndPrefixBytes: prefixLen,
+        },
+      });
+      return true;
+    }
+
+    // Wait a moment after connection to ensure device is fully ready
+    logger.info("Waiting for device to be fully ready...");
+    await this.sleep(1000);
+
     // Check device storage before upload
     if (!this.checkStorageCapacity(fullData.length)) {
       throw new UploadError(
@@ -157,11 +188,6 @@ export class BeamBoxUploader {
       );
     }
 
-    // Step 1: Send image info packet to announce upload
-    const imageInfoPayload = this.payloadBuilder.buildImageInfo(
-      PacketType.IMAGE,
-      1,
-    );
     await this.ble.sendImageInfo(imageInfoPayload);
     logger.info("Sent image info packet, proceeding to data transfer");
 
@@ -251,6 +277,76 @@ export class BeamBoxUploader {
     );
   }
 
+  private async dumpPayload(
+    dumpDir: string,
+    info: {
+      kind: "image" | "animation";
+      packetType: PacketType;
+      infoPayload: Buffer;
+      fullData: Buffer;
+      targetSize: [number, number];
+      extra: Record<string, number>;
+    },
+  ): Promise<void> {
+    const { kind, packetType, infoPayload, fullData, targetSize, extra } =
+      info;
+
+    await mkdir(dumpDir, { recursive: true });
+
+    const infoPacket = this.payloadBuilder.createPacket(
+      infoPayload,
+      1,
+      0,
+      PacketType.IMAGE,
+    );
+
+    const chunkSize = this.protocolConfig.chunkSize;
+    const totalChunks = Math.ceil(fullData.length / chunkSize);
+    const dataPackets: Buffer[] = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, fullData.length);
+      const chunk = fullData.subarray(start, end);
+      const remainingPackets = totalChunks - 1 - i;
+      dataPackets.push(
+        this.payloadBuilder.createPacket(
+          chunk,
+          totalChunks,
+          remainingPackets,
+          packetType,
+        ),
+      );
+    }
+
+    await writeFile(join(dumpDir, "info_packet.bin"), infoPacket);
+    await writeFile(join(dumpDir, "payload.bin"), fullData);
+    await writeFile(
+      join(dumpDir, "data_packets.bin"),
+      Buffer.concat(dataPackets),
+    );
+
+    const manifest = {
+      kind,
+      packetType,
+      targetSize,
+      payloadBytes: fullData.length,
+      chunkSize,
+      totalDataPackets: totalChunks,
+      infoPacketHex: infoPacket.toString("hex"),
+      payloadHexPreview: fullData.subarray(0, 64).toString("hex"),
+      ...extra,
+    };
+    await writeFile(
+      join(dumpDir, "manifest.json"),
+      JSON.stringify(manifest, null, 2),
+    );
+
+    logger.info(`Dumped ${kind} upload to ${dumpDir}`);
+    logger.info(
+      `  payload.bin: ${fullData.length} bytes | data_packets.bin: ${totalChunks} packets | info_packet.bin: ${infoPacket.length} bytes`,
+    );
+  }
+
   /**
    * Upload an animated GIF or video as Type 5 (DYNAMIC_AMBIENCE)
    *
@@ -263,6 +359,7 @@ export class BeamBoxUploader {
     filePath: string,
     targetSize: [number, number],
     onProgress?: (progress: number) => void,
+    dumpDir?: string,
   ): Promise<boolean> {
     const animationSize: [number, number] = targetSize;
 
@@ -271,7 +368,6 @@ export class BeamBoxUploader {
     const MAX_ANIMATION_DURATION_SECS = 3;
     const ANIMATION_FPS = 20;
 
-    // Extract frames from the file
     logger.info(
       `Extracting frames from animation at ${animationSize[0]}x${animationSize[1]}...`,
     );
@@ -283,8 +379,6 @@ export class BeamBoxUploader {
 
     logger.info(`Extracted ${frames.length} frames`);
 
-    // Ensure minimum 2 frames for device compatibility
-    // The xV4 format requires at least 2 frames
     const MIN_FRAMES = 2;
     if (frames.length < MIN_FRAMES) {
       logger.info(
@@ -294,7 +388,7 @@ export class BeamBoxUploader {
         const lastFrame = frames[frames.length - 1]!;
         frames.push({
           name: `frame_${String(frames.length + 1).padStart(5, "0")}`,
-          data: lastFrame.data, // Reuse the same buffer
+          data: lastFrame.data,
         });
       }
       logger.info(`Padded to ${frames.length} frames`);
@@ -303,11 +397,6 @@ export class BeamBoxUploader {
     const intervalMs = Math.round(1000 / ANIMATION_FPS);
     logger.info(`Using frame interval: ${intervalMs}ms`);
 
-    // Wait for device to be ready
-    logger.info("Waiting for device to be fully ready...");
-    await this.sleep(1000);
-
-    // Build animation payload to check size
     const fullData = this.payloadBuilder.buildAnimationData(
       frames,
       intervalMs,
@@ -318,10 +407,31 @@ export class BeamBoxUploader {
       `Animation payload bytes: total=${fullData.length}, frames=${frames.length}`,
     );
 
-    // Validate against protocol limits
     this.validatePayloadLimits(fullData.length);
 
-    // Check device storage before upload
+    const imageInfoPayload = this.payloadBuilder.buildImageInfo(
+      PacketType.IMAGE,
+      1,
+    );
+
+    if (dumpDir) {
+      await this.dumpPayload(dumpDir, {
+        kind: "animation",
+        packetType: PacketType.DYNAMIC_AMBIENCE,
+        infoPayload: imageInfoPayload,
+        fullData,
+        targetSize: animationSize,
+        extra: {
+          frameCount: frames.length,
+          intervalMs,
+        },
+      });
+      return true;
+    }
+
+    logger.info("Waiting for device to be fully ready...");
+    await this.sleep(1000);
+
     if (!this.checkStorageCapacity(fullData.length)) {
       throw new UploadError(
         `Insufficient device storage. Animation requires ${Math.ceil(fullData.length / 1024)}KB. ` +
@@ -329,11 +439,6 @@ export class BeamBoxUploader {
       );
     }
 
-    // Step 1: Send image info packet (Type 6 for the info)
-    const imageInfoPayload = this.payloadBuilder.buildImageInfo(
-      PacketType.IMAGE,
-      1,
-    );
     await this.ble.sendImageInfo(imageInfoPayload);
     logger.info("Sent animation info packet, proceeding to data transfer");
 
@@ -372,12 +477,14 @@ export class BeamBoxUploader {
     targetSize?: [number, number],
     animationSize?: [number, number],
     onProgress?: (progress: number, status?: string) => void,
+    dumpDir?: string,
   ): Promise<boolean> {
     return await this.upload({
       imagePath,
       targetSize,
       animationSize,
       onProgress,
+      dumpDir,
     });
   }
 
@@ -392,6 +499,7 @@ export class BeamBoxUploader {
     targetSize?: [number, number],
     squares?: number,
     onProgress?: (progress: number, status?: string) => void,
+    dumpDir?: string,
   ): Promise<boolean> {
     const effectiveSize = targetSize ?? this.imageConfig.defaultSize;
     const effectiveSquares = squares ?? this.imageConfig.checkerboardSquares;
@@ -413,6 +521,7 @@ export class BeamBoxUploader {
       imageData: jpegData,
       targetSize: effectiveSize,
       onProgress,
+      dumpDir,
     });
   }
 
