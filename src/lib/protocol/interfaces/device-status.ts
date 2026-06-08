@@ -8,12 +8,12 @@ export interface DeviceStatus {
   type: PacketType.DEVICE_STATUS;
 
   /**
-   * Total storage capacity in kilobytes (KB)
+   * Total storage capacity in megabytes (MB)
    */
   allspace: number;
 
   /**
-   * Available free storage in kilobytes (KB)
+   * Available free storage in megabytes (MB)
    */
   freespace: number;
 

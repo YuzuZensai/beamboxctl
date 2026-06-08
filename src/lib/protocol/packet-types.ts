@@ -109,8 +109,8 @@ export enum PacketType {
    * ```json
    * {
    *   "type": 13,
-   *   "allspace": 16384,     // Total storage in KB
-   *   "freespace": 13892,    // Free storage in KB
+   *   "allspace": 16384,     // Total storage in MB
+   *   "freespace": 13892,    // Free storage in MB
    *   "devname": "",         // Device name (usually empty)
    *   "size": "368,368",     // Display resolution (width,height)
    *   "brand": 0             // Brand/model identifier

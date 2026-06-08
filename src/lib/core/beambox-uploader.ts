@@ -195,12 +195,12 @@ export class BeamBoxUploader {
       return false;
     }
 
-    const freespaceKB = Number(deviceStatus.freespace) || 0;
-    const freespaceBytes = freespaceKB * 1024;
-    const payloadKB = Math.ceil(payloadSizeBytes / 1024);
+    const freespaceMB = Number(deviceStatus.freespace) || 0;
+    const freespaceBytes = freespaceMB * 1024 * 1024;
+    const payloadMB = (payloadSizeBytes / (1024 * 1024)).toFixed(2);
 
     logger.info(
-      `Storage check: payload=${payloadKB}KB, available=${freespaceKB}KB`,
+      `Storage check: payload=${payloadMB}MB, available=${freespaceMB}MB`,
     );
 
     // Add 10% safety margin to avoid filling device completely
@@ -208,7 +208,7 @@ export class BeamBoxUploader {
 
     if (freespaceBytes < requiredBytes) {
       logger.error(
-        `Insufficient storage: need ${Math.ceil(requiredBytes / 1024)}KB (with 10% margin), have ${freespaceKB}KB`,
+        `Insufficient storage: need ${(requiredBytes / (1024 * 1024)).toFixed(2)}MB (with 10% margin), have ${freespaceMB}MB`,
       );
       return false;
     }

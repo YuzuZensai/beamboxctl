@@ -48,9 +48,11 @@ export const Status: React.FC<StatusProps> = ({
   notifications,
   verbose,
 }) => {
-  const allspace = typeof status?.allspace === "number" ? status.allspace : 0;
-  const freespace =
+  const allspaceMB = typeof status?.allspace === "number" ? status.allspace : 0;
+  const freespaceMB =
     typeof status?.freespace === "number" ? status.freespace : 0;
+  const allspace = allspaceMB * 1024 * 1024;
+  const freespace = freespaceMB * 1024 * 1024;
   const usedSpace = allspace - freespace;
   const freePercentage =
     allspace > 0 ? Math.round((freespace / allspace) * 100) : 0;
