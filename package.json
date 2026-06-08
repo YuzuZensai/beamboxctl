@@ -1,6 +1,6 @@
 {
   "name": "beamboxctl",
-  "version": "0.0.1",
+  "version": "1.1.0",
   "description": "CLI tool for uploading and managing BeamBox e-Badge devices",
   "type": "module",
   "bin": {

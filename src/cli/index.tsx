@@ -1,5 +1,9 @@
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { logger, LogLevel } from "../lib/utils/logger.ts";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../../package.json") as { version: string };
 import { statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { scanDirectoryForImages } from "../utils/app-utils.ts";
@@ -82,7 +86,7 @@ export function setupCLI() {
   program
     .name("beamboxctl")
     .description("CLI tool for managing BeamBox e-Badge devices")
-    .version("1.0.0")
+    .version(version)
     .option("-v, --verbose", "Show detailed logs including packet data", false);
 
   program
