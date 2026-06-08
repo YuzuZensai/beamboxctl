@@ -183,7 +183,7 @@ export class BeamBoxUploader {
     // Check device storage before upload
     if (!this.checkStorageCapacity(fullData.length)) {
       throw new UploadError(
-        `Insufficient device storage. Image requires ${Math.ceil(fullData.length / 1024)}KB. ` +
+        `Insufficient device storage. Image requires ${Math.ceil(fullData.length / 1024)}KiB. ` +
           `Try reducing image size or quality.`,
       );
     }
@@ -221,20 +221,19 @@ export class BeamBoxUploader {
       return false;
     }
 
-    const freespaceMB = Number(deviceStatus.freespace) || 0;
-    const freespaceBytes = freespaceMB * 1024 * 1024;
-    const payloadMB = (payloadSizeBytes / (1024 * 1024)).toFixed(2);
+    const freespaceKiB = Number(deviceStatus.freespace) || 0;
+    const freespaceBytes = freespaceKiB * 1024;
+    const payloadKiB = (payloadSizeBytes / 1024).toFixed(2);
 
     logger.info(
-      `Storage check: payload=${payloadMB}MB, available=${freespaceMB}MB`,
+      `Storage check: payload=${payloadKiB}KiB, available=${freespaceKiB}KiB`,
     );
 
-    // Add 10% safety margin to avoid filling device completely
     const requiredBytes = Math.ceil(payloadSizeBytes * 1.1);
 
     if (freespaceBytes < requiredBytes) {
       logger.error(
-        `Insufficient storage: need ${(requiredBytes / (1024 * 1024)).toFixed(2)}MB (with 10% margin), have ${freespaceMB}MB`,
+        `Insufficient storage: need ${(requiredBytes / 1024).toFixed(2)}KiB (with 10% margin), have ${freespaceKiB}KiB`,
       );
       return false;
     }
@@ -434,7 +433,7 @@ export class BeamBoxUploader {
 
     if (!this.checkStorageCapacity(fullData.length)) {
       throw new UploadError(
-        `Insufficient device storage. Animation requires ${Math.ceil(fullData.length / 1024)}KB. ` +
+        `Insufficient device storage. Animation requires ${Math.ceil(fullData.length / 1024)}KiB. ` +
           `Try reducing frames or image quality.`,
       );
     }

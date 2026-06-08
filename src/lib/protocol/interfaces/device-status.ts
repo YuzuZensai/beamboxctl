@@ -7,14 +7,10 @@ export interface DeviceStatus {
   /** Packet type identifier (always 13 for DEVICE_STATUS) */
   type: PacketType.DEVICE_STATUS;
 
-  /**
-   * Total storage capacity in megabytes (MB)
-   */
+  /** Total storage capacity in KiB */
   allspace: number;
 
-  /**
-   * Available free storage in megabytes (MB)
-   */
+  /** Available free storage in KiB */
   freespace: number;
 
   /**
