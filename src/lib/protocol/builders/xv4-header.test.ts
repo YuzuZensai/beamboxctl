@@ -25,8 +25,8 @@ describe("XV4HeaderBuilder", () => {
       // Check frame count (offset 8)
       expect(container.readUInt32LE(8)).toBe(1);
 
-      // Check unknown field (offset 12) = frame_count * 10 + 10 = 20
-      expect(container.readUInt32LE(12)).toBe(20);
+      // Check interval field (offset 12) = clamped intervalMs = 50
+      expect(container.readUInt32LE(12)).toBe(50);
     });
 
     it("should create a valid xV4 container with multiple frames", () => {
@@ -53,8 +53,9 @@ describe("XV4HeaderBuilder", () => {
       // Check frame count (offset 8)
       expect(container.readUInt32LE(8)).toBe(3);
 
-      // Check total data size (offset 28) = 3 * (32 + 6) = 114 (metadata + jpeg per frame)
-      expect(container.readUInt32LE(28)).toBe(114);
+      // Check total container size (offset 28) = frame_table_end + per-frame data
+      // = (32 + 3*16) + 3*(32 + 6) = 80 + 114 = 194
+      expect(container.readUInt32LE(28)).toBe(194);
 
       // Validate it's a proper xV4 container
       expect(XV4HeaderBuilder.validate(container)).toBe(true);
@@ -218,8 +219,8 @@ describe("XV4HeaderBuilder", () => {
       // [4-7] Next frame table offset (points to frame 1 metadata)
       expect(container.readUInt32LE(meta0 + 4)).toBe(meta1);
 
-      // [8-11] Unknown value = frame_count - 3 = -1 clamped to 0
-      expect(container.readUInt32LE(meta0 + 8)).toBe(0);
+      // [8-11] Constant value 11
+      expect(container.readUInt32LE(meta0 + 8)).toBe(11);
 
       // [12-13] Width
       expect(container.readUInt16LE(meta0 + 12)).toBe(360);

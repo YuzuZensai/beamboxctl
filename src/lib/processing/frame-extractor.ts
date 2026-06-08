@@ -66,8 +66,8 @@ export class FrameExtractor {
       }
 
       // Add quality settings
-      // Use -q:v 10 for initial extraction (will be re-encoded with Sharp)
-      ffmpegCmd += ` -q:v 10`;
+      // -q:v 3 matches the official app
+      ffmpegCmd += ` -q:v 3`;
 
       ffmpegCmd += ` "${outputPattern}"`;
 
@@ -126,13 +126,12 @@ export class FrameExtractor {
       const framePromises = frameFiles.map(async (file) => {
         const framePath = join(tempDir, file);
 
-        // Decode and re-encode to ensure consistent JPEG format with quality 75
-        // This should match official app settings:
-        // with Chroma subsampling: 4:4:4 (no subsampling, highest quality)
+        // Decode and re-encode to ensure consistent JPEG format with quality 75 (matches official app)
+        // the official app's encoder doesn't seem to optimise so optimiseCoding will be off too
         const reencoded = await sharp(framePath)
           .jpeg({
             quality: 75,
-            optimiseCoding: true,
+            optimiseCoding: false,
             mozjpeg: false,
             chromaSubsampling: "4:4:4",
           })

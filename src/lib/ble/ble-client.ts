@@ -598,7 +598,7 @@ export class BleUploader {
 
         onProgress(
           combinedProgress,
-          `Uploading (${i + 1} sent, ${this.notificationHandler.packetSuccessCount} confirmed)`,
+          `Sending: (${i + 1}/${totalChunks} packets)`,
         );
       }
 
@@ -631,7 +631,7 @@ export class BleUploader {
 
             onProgress(
               combinedProgress,
-              `Uploading (${i + 1} sent, ${this.notificationHandler.packetSuccessCount} confirmed)`,
+              `Sending: (${this.notificationHandler.packetSuccessCount}/${totalChunks} packets)`,
             );
           }
 
@@ -689,7 +689,7 @@ export class BleUploader {
 
         onProgress(
           combinedProgress,
-          `Uploading (${this.notificationHandler.expectedAckCount} sent, ${this.notificationHandler.packetSuccessCount} confirmed)`,
+          `Confirming: (${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount} packets)`,
         );
       }
 

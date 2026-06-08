@@ -10,9 +10,9 @@
  * [0-3]   "xV4" + 0x12 (signature + version)
  * [4-7]   Header size = frame_table_end - 8 (uint32 LE)
  * [8-11]  Frame count (uint32 LE)
- * [12-15] Unknown value = frame_count * 10 + 10 (uint32 LE)
+ * [12-15] Frame interval in milliseconds, clamped to 50-99 (uint32 LE)
  * [16-27] Timing string "output/XXms\0" (12 bytes, null-padded)
- * [28-31] Total data size including per-frame metadata (uint32 LE)
+ * [28-31] Total container size = frame_table_end + per-frame data (uint32 LE)
  *
  * FRAME TABLE (frame_count * 16 bytes):
  * Each entry (16 bytes):
@@ -25,7 +25,7 @@
  *   [0-3]   Current frame table offset (uint32 LE)
  *   [4-7]   Next frame table offset (uint32 LE)
  *           Points to next frame's metadata, or back to first frame for looping
- *   [8-11]  Unknown value = frame_count - 3 (uint32 LE)
+ *   [8-11]  Constant value 11 (uint32 LE)
  *   [12-13] Width (uint16 LE)
  *   [14-15] Height (uint16 LE)
  *   [16-19] Actual JPEG start offset in file (uint32 LE)
@@ -78,12 +78,16 @@ export class XV4HeaderBuilder {
     const frameTableSize = frameCount * this.FRAME_ENTRY_SIZE;
     const frameTableEnd = this.FIXED_HEADER_SIZE + frameTableSize;
 
-    // Total size = header + frame_table + (metadata + jpeg) for each frame
-    const totalDataSize = frames.reduce(
+    // Per-frame data = (metadata + jpeg) for each frame
+    const perFrameDataSize = frames.reduce(
       (sum, frame) => sum + this.FRAME_METADATA_SIZE + frame.data.length,
       0,
     );
-    const totalSize = frameTableEnd + totalDataSize;
+
+    // Total size = header + frame_table + per-frame data.
+    // The official app writes this same value into the [28-31] field below
+    // (i.e. the field is the full container size, not just the per-frame data).
+    const totalSize = frameTableEnd + perFrameDataSize;
 
     const container = Buffer.alloc(totalSize);
     let offset = 0;
@@ -107,16 +111,17 @@ export class XV4HeaderBuilder {
     container.writeUInt32LE(frameCount, offset);
     offset += 4;
 
-    // [12-15] Unknown value = frame_count * 10 + 10
-    const unknownValue = frameCount * 10 + 10;
-    container.writeUInt32LE(unknownValue, offset);
+    // The timing string must fit in 12 bytes including null terminator, which
+    // limits intervals to 2 digits (10-99ms) for the "output/XXms\0" format.
+    // Additionally, I floor-ed at 50ms to match the official app's observed range from many packet captures (50-99ms).
+    // (in practice intervalMs *should* always be 50, derived from the fixed 20fps extraction rate).
+    const clampedInterval = Math.max(50, Math.min(99, intervalMs));
+
+    // [12-15] Frame interval in milliseconds (same value as in the timing string)
+    container.writeUInt32LE(clampedInterval, offset);
     offset += 4;
 
     // [16-27] Timing string "output/XXms\0" (12 bytes, null-padded)
-    // The timing string must fit in 12 bytes including null terminator.
-    // This means intervals must be 10-99ms (2 digits) to fit "output/XXms\0" format.
-    // Clamp intervals to 50-99 range to ensure proper format.
-    const clampedInterval = Math.max(50, Math.min(99, intervalMs));
     const timingStr = `output/${clampedInterval}ms`;
     const timingBuffer = Buffer.alloc(this.FRAME_NAME_SIZE);
     Buffer.from(timingStr, "utf-8").copy(timingBuffer);
@@ -124,8 +129,10 @@ export class XV4HeaderBuilder {
     timingBuffer.copy(container, offset);
     offset += this.FRAME_NAME_SIZE;
 
-    // [28-31] Total data size (metadata + jpeg for all frames)
-    container.writeUInt32LE(totalDataSize, offset);
+    // [28-31] Total container size = frame_table_end + per-frame data
+    // (I checked against captures from official app, this field seems to always equals the
+    // full xV4 container length, not just the per-frame metadata+jpeg sum)
+    container.writeUInt32LE(totalSize, offset);
     offset += 4;
 
     // Verify we're at the right position
@@ -176,8 +183,8 @@ export class XV4HeaderBuilder {
 
     // ===== PER-FRAME DATA (metadata + jpeg for each frame) =====
 
-    // TODO: Investigate unknown metadata field meaning
-    const unknownMetaValue = Math.max(0, frameCount - 3); // 11 for 14 frames?
+    // Constant observed across all frames regardless of frame count or interval
+    const FRAME_META_CONSTANT = 11;
 
     for (let i = 0; i < frames.length; i++) {
       const frame = frames[i]!;
@@ -203,8 +210,8 @@ export class XV4HeaderBuilder {
       container.writeUInt32LE(nextTableOffset, offset);
       offset += 4;
 
-      // [8-11] Unknown value = frame_count - 3
-      container.writeUInt32LE(unknownMetaValue, offset);
+      // [8-11] Constant value 11
+      container.writeUInt32LE(FRAME_META_CONSTANT, offset);
       offset += 4;
 
       // [12-13] Width (uint16 LE)
@@ -285,14 +292,14 @@ export class XV4HeaderBuilder {
     lines.push(`  Version: 0x${buffer.readUInt8(3).toString(16)}`);
     lines.push(`  Header size field: ${buffer.readUInt32LE(4)}`);
     lines.push(`  Frame count: ${buffer.readUInt32LE(8)}`);
-    lines.push(`  Unknown field: ${buffer.readUInt32LE(12)}`);
+    lines.push(`  Interval (ms): ${buffer.readUInt32LE(12)}`);
 
     const timingStr = buffer
       .subarray(16, 28)
       .toString("utf-8")
       .replace(/\0.*$/, "");
     lines.push(`  Timing string: "${timingStr}"`);
-    lines.push(`  Total JPEG size: ${buffer.readUInt32LE(28)}`);
+    lines.push(`  Total container size: ${buffer.readUInt32LE(28)}`);
 
     // Frame table
     const frameCount = buffer.readUInt32LE(8);
@@ -322,7 +329,9 @@ export class XV4HeaderBuilder {
       lines.push(
         `  Next table offset: ${buffer.readUInt32LE(firstMetadataStart + 4)}`,
       );
-      lines.push(`  Unknown: ${buffer.readUInt32LE(firstMetadataStart + 8)}`);
+      lines.push(
+        `  Constant: ${buffer.readUInt32LE(firstMetadataStart + 8)}`,
+      );
       lines.push(
         `  Dimensions: ${buffer.readUInt16LE(firstMetadataStart + 12)}x${buffer.readUInt16LE(firstMetadataStart + 14)}`,
       );
