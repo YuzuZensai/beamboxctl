@@ -5,11 +5,10 @@ import { PacketType } from "../packet-types.ts";
 /**
  * Default BLE configuration for BeamBox devices
  *
- * Standard settings for connecting to the beambox e-Badge Pulse device.
- * TODO: Support other BeamBox models in the future.
+ * Matches any device whose advertised name contains "e-Badge"
  */
 export const DEFAULT_BLE_CONFIG: BLEConfig = {
-  deviceName: "beambox e-Badge Pulse",
+  deviceName: "e-Badge",
   writeCharacteristicUUID: "000001f1-0000-1000-8000-00805f9b34fb",
   notifyCharacteristicUUID: "000001f2-0000-1000-8000-00805f9b34fb",
   scanTimeout: 10.0,
