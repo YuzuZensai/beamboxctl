@@ -6,6 +6,7 @@ import {
   UploadProgress,
   ConnectionStatus,
   ConfirmAnimatedUpload,
+  DeviceSelector,
 } from "./index.ts";
 import { useUpload } from "../hooks/useUpload.ts";
 import type { UploadOptions } from "../cli/types.ts";
@@ -50,6 +51,9 @@ const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
     totalFiles,
     uploadSteps,
     connectionSteps,
+    scannedDevices,
+    scanning,
+    onDeviceSelected,
   } = useUpload(options, verbose);
 
   // Exit the app when done
@@ -75,6 +79,14 @@ const UploadFlow: React.FC<{ options: UploadOptions; verbose: boolean }> = ({
             Bulk Upload: {currentFileIndex}/{totalFiles} files
           </Text>
         </Box>
+      )}
+
+      {(status === "scanning" || status === "selecting") && (
+        <DeviceSelector
+          devices={scannedDevices}
+          scanning={scanning}
+          onSelect={onDeviceSelected}
+        />
       )}
 
       {status === "connecting" && (

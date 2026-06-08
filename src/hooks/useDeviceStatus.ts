@@ -5,10 +5,13 @@ import type { DeviceStatus, ParsedResponse } from "../lib/protocol/interfaces/in
 import type { ConnectionStep } from "../components/index.ts";
 import { updateStepStatus } from "../utils/app-utils.ts";
 import type { StatusOptions } from "../cli/types.ts";
+import { useDeviceScanner } from "./useDeviceScanner.ts";
 
 export function useDeviceStatus(options: StatusOptions) {
+  const [selecting, setSelecting] = useState(!options.address);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { scannedDevices, scanning, onDeviceSelected, scanAndSelect } = useDeviceScanner();
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
   const [notifications, setNotifications] = useState<
     Array<{ time: number; data: Buffer; parsed: ParsedResponse }>
@@ -92,13 +95,24 @@ export function useDeviceStatus(options: StatusOptions) {
 
     try {
       uploader = new BeamBoxUploader(
-        options.address,
+        options.address ?? undefined,
         undefined,
         undefined,
         undefined,
         undefined,
         options.verbose,
       );
+
+      if (!options.address) {
+        setSelecting(true);
+        const chosen = await scanAndSelect(uploader);
+        setSelecting(false);
+        if (!chosen) {
+          setError("No BeamBox devices found.");
+          setLoading(false);
+          return;
+        }
+      }
 
       const result = await uploader.getStatus(10000);
 
@@ -135,10 +149,14 @@ export function useDeviceStatus(options: StatusOptions) {
   }, [getStatus]);
 
   return {
+    selecting,
     loading,
     error,
     deviceStatus,
     notifications,
     connectionSteps,
+    scannedDevices,
+    scanning,
+    onDeviceSelected,
   };
 }

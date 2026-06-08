@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { BeamBoxUploader } from "../lib/core/beambox-uploader.ts";
 import { logger, LogEventType } from "../lib/utils/logger.ts";
 import { BeamBoxError } from "../lib/utils/errors.ts";
@@ -6,16 +6,18 @@ import type { ConnectionStep } from "../components/index.ts";
 import { basename } from "node:path";
 import { updateStepStatus } from "../utils/app-utils.ts";
 import type { UploadOptions } from "../cli/types.ts";
+import { useDeviceScanner } from "./useDeviceScanner.ts";
 
 export function useUpload(options: UploadOptions, verbose: boolean) {
   const [status, setStatus] = useState<
-    "connecting" | "uploading" | "success" | "error"
-  >("connecting");
+    "scanning" | "selecting" | "connecting" | "uploading" | "success" | "error"
+  >("scanning");
   const [message, setMessage] = useState<string>("Initializing...");
   const [sendProgress, setSendProgress] = useState<number>(0);
   const [confirmProgress, setConfirmProgress] = useState<number>(0);
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
   const [totalFiles, setTotalFiles] = useState<number>(1);
+  const { scannedDevices, scanning, onDeviceSelected, scanAndSelect } = useDeviceScanner();
 
   const [uploadSteps, setUploadSteps] = useState<ConnectionStep[]>([
     { id: "image-info", label: "Sending image info", status: "pending" },
@@ -129,13 +131,23 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
         }
 
         uploader = new BeamBoxUploader(
-          options.address,
+          options.address ?? undefined,
           packetDelaySeconds,
           undefined,
           undefined,
           undefined,
           verbose,
         );
+
+        if (!options.address) {
+          setStatus("selecting");
+          const chosen = await scanAndSelect(uploader);
+          if (!chosen) {
+            setStatus("error");
+            setMessage("No BeamBox devices found. Make sure your device is nearby and powered on.");
+            return;
+          }
+        }
 
         setStatus("connecting");
         setMessage("Connecting to BeamBox device...");
@@ -282,5 +294,8 @@ export function useUpload(options: UploadOptions, verbose: boolean) {
     totalFiles,
     uploadSteps,
     connectionSteps,
+    scannedDevices,
+    scanning,
+    onDeviceSelected,
   };
 }

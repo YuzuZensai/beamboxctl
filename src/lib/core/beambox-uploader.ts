@@ -61,6 +61,20 @@ export class BeamBoxUploader {
     this.payloadBuilder = new PayloadBuilder(this.protocolConfig);
   }
 
+  public setDeviceAddress(address: string): void {
+    this.ble.setDeviceAddress(address);
+  }
+
+  /**
+   * Scan for all matching devices and return them so a UI can offer selection.
+   */
+  public async scanForDevices(
+    onDeviceFound?: (device: { name: string | null; address: string }) => void,
+    signal?: AbortSignal,
+  ): Promise<Array<{ name: string | null; address: string }>> {
+    return await this.ble.scanForDevices(onDeviceFound, signal);
+  }
+
   /**
    * Connect to the device
    * @returns True if connected successfully

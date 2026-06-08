@@ -7,6 +7,11 @@ import type {
   BleCharacteristic,
   DiscoveredDevice,
 } from "../backend.ts";
+import type {
+  AdapterInternal,
+  BluezInterfacesMap,
+  DbusObjectManager,
+} from "../../../types/node-ble.d.ts";
 
 const POLL_INTERVAL_MS = 1000;
 
@@ -96,10 +101,6 @@ export class DBusBackend implements BleBackend {
     await this.ensureDiscovering();
 
     const adapter = this.adapter;
-
-    // Keep re-checking unnamed devices on every poll instead of giving up on first sight.
-    // Not sure if this is the best way to handle this.
-
     const named = new Map<string, string | null>();
     const deadline = Date.now() + timeoutMs;
 
@@ -139,6 +140,127 @@ export class DBusBackend implements BleBackend {
 
     await this.stopScan();
     return null;
+  }
+
+  async scanForAll(
+    matcher: (device: DiscoveredDevice) => boolean,
+    timeoutMs: number,
+    onDeviceFound?: (device: DiscoveredDevice) => void,
+    signal?: AbortSignal,
+  ): Promise<DiscoveredDevice[]> {
+    if (!this.adapter) {
+      throw new ConnectionError("Bluetooth adapter not initialized");
+    }
+
+    await this.ensureDiscovering();
+
+    const adapter = this.adapter;
+    const found = new Map<string, DiscoveredDevice>();
+
+    return new Promise<DiscoveredDevice[]>((resolve) => {
+      const dbus = (adapter as AdapterInternal).dbus;
+
+      let objectManager: DbusObjectManager | null = null;
+
+      const finish = async () => {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", finish);
+        if (objectManager) {
+          objectManager.removeAllListeners("InterfacesAdded");
+        }
+        await this.stopScan();
+        resolve(Array.from(found.values()));
+      };
+
+      const timeoutId = setTimeout(finish, timeoutMs);
+      signal?.addEventListener("abort", finish, { once: true });
+
+      const handleDevice = async (
+        objectPath: string,
+        interfaces: BluezInterfacesMap,
+      ) => {
+        if (!objectPath.includes("/dev_")) return;
+        const iface = interfaces["org.bluez.Device1"];
+        if (!iface) return;
+
+        const address: string =
+          iface.Address?.value ??
+          objectPath.split("/dev_")[1]?.replace(/_/g, ":") ??
+          "";
+        if (!address || found.has(address)) return;
+
+        const name: string | null =
+          iface.Name?.value ?? iface.Alias?.value ?? null;
+
+        if (name) {
+          logger.debug(`Discovered device: ${name} (${address})`);
+        }
+
+        const candidate: DiscoveredDevice = { address, name };
+        if (matcher(candidate)) {
+          found.set(address, candidate);
+          if (!this.device) {
+            this.device = await adapter.getDevice(address).catch(() => null);
+          }
+          onDeviceFound?.(candidate);
+        }
+      };
+
+      dbus
+        .getProxyObject("org.bluez", "/")
+        .then((rootObj) => {
+          objectManager = rootObj.getInterface(
+            "org.freedesktop.DBus.ObjectManager",
+          );
+          objectManager.on("InterfacesAdded", handleDevice);
+
+          objectManager
+            .GetManagedObjects()
+            .then((objects) => {
+              for (const [objectPath, interfaces] of Object.entries(objects)) {
+                handleDevice(objectPath, interfaces);
+              }
+            })
+            .catch(() => {});
+        })
+        .catch(() => {
+          const poll = async () => {
+            if (signal?.aborted) return;
+            try {
+              const addresses = await adapter.devices();
+              for (const address of addresses) {
+                if (found.has(address)) continue;
+                let name: string | null = null;
+                try {
+                  const remoteDevice = await adapter.getDevice(address);
+                  name = await remoteDevice
+                    .getName()
+                    .catch(async () =>
+                      remoteDevice.getAlias().catch(() => null),
+                    );
+                } catch {
+                  /* ignore */
+                }
+                if (name)
+                  logger.debug(`Discovered device: ${name} (${address})`);
+                const candidate: DiscoveredDevice = { address, name };
+                if (matcher(candidate)) {
+                  found.set(address, candidate);
+                  if (!this.device)
+                    this.device = await adapter
+                      .getDevice(address)
+                      .catch(() => null);
+                  onDeviceFound?.(candidate);
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+            if (!signal?.aborted) setTimeout(poll, POLL_INTERVAL_MS);
+          };
+          poll();
+        });
+    });
   }
 
   async stopScan(): Promise<void> {
@@ -227,9 +349,19 @@ export class DBusBackend implements BleBackend {
 
       if (this.device) {
         this.device.removeAllListeners();
+
+        const address = await this.device.getAddress().catch(() => null);
+
         if (await this.device.isConnected().catch(() => false)) {
           await this.device.disconnect().catch(() => {});
         }
+
+        if (address && this.adapter) {
+          const internal = this.adapter as AdapterInternal;
+          const devicePath = `/org/bluez/${internal.adapter}/dev_${address.replace(/:/g, "_").toUpperCase()}`;
+          await internal.helper.callMethod("RemoveDevice", devicePath).catch(() => {});
+        }
+
         this.device = null;
       }
 

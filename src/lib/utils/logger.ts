@@ -14,6 +14,7 @@ export enum LogLevel {
 export enum LogEventType {
   SCAN_START = "scan_start",
   DEVICE_FOUND = "device_found",
+  DEVICES_FOUND = "devices_found",
   CONNECT_START = "connect_start",
   CONNECTED = "connected",
   DISCOVER_CHAR = "discover_char",

@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Box, Text, useApp } from "ink";
 import Spinner from "ink-spinner";
-import { Header, Status, ConnectionStatus } from "./index.ts";
+import { Header, Status, ConnectionStatus, DeviceSelector } from "./index.ts";
 import { useDeviceStatus } from "../hooks/useDeviceStatus.ts";
 import type { StatusOptions } from "../cli/types.ts";
 
@@ -12,7 +12,7 @@ export interface StatusAppProps {
 
 export const StatusApp: React.FC<StatusAppProps> = ({ options }) => {
   const { exit } = useApp();
-  const { loading, error, deviceStatus, notifications, connectionSteps } =
+  const { selecting, loading, error, deviceStatus, notifications, connectionSteps, scannedDevices, scanning, onDeviceSelected } =
     useDeviceStatus(options);
 
   // Exit the app when done
@@ -32,7 +32,15 @@ export const StatusApp: React.FC<StatusAppProps> = ({ options }) => {
     <Box flexDirection="column" padding={1}>
       <Header />
 
-      {loading && (
+      {selecting && (
+        <DeviceSelector
+          devices={scannedDevices}
+          scanning={scanning}
+          onSelect={onDeviceSelected}
+        />
+      )}
+
+      {!selecting && loading && (
         <Box flexDirection="column">
           <Box>
             <Text color="cyan">

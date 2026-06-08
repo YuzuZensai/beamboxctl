@@ -148,11 +148,6 @@ class NotificationHandler {
     }
   }
 
-  /**
-   * Log sent packet in verbose mode
-   * @param packet Sent packet buffer
-   * @param description Description of the packet
-   */
   public logSentPacket(packet: Buffer, description: string): void {
     if (this.verbose) {
       const timestamp = new Date().toISOString();
@@ -162,10 +157,6 @@ class NotificationHandler {
     }
   }
 
-  /**
-   * Get all received notifications
-   * @returns Array of notifications with timestamp, data, and parsed content
-   */
   public getNotifications(): Array<{
     time: number;
     data: Buffer;
@@ -174,10 +165,6 @@ class NotificationHandler {
     return this.allNotifications;
   }
 
-  /**
-   * Wait for device status to be received
-   * @returns Promise that resolves when status is received
-   */
   public waitForStatus(): Promise<void> {
     return new Promise((resolve) => {
       if (this.deviceStatusReceived) {
@@ -188,38 +175,24 @@ class NotificationHandler {
     });
   }
 
-  /**
-   * Wait for any notification from device
-   * @returns Promise that resolves when a notification is received
-   */
   public waitForNotification(): Promise<void> {
     return new Promise((resolve) => {
       this.notificationResolve = resolve;
     });
   }
 
-  /**
-   * Reset internal state
-   */
   public reset(): void {
     this.notificationResolve = null;
     this.statusResolve = null;
     this.errorFlag = false;
   }
 
-  /**
-   * Set the expected number of acknowledgments to wait for
-   * @param count Number of packets that will be sent
-   */
   public setExpectedAckCount(count: number): void {
     this.expectedAckCount = count;
     this.packetSuccessCount = 0;
   }
 }
 
-/**
- * Manages BLE connection and data transfer to BeamBox device
- */
 export class BleUploader {
   private backend: BleBackend;
   private writeCharacteristic: BleCharacteristic | null = null;
@@ -230,6 +203,7 @@ export class BleUploader {
   private verbose: boolean = false;
   private isInitialized: boolean = false;
   private connectedAddress: string | null = null;
+  private alreadyScanned: boolean = false;
 
   constructor(
     private deviceAddress: string | null,
@@ -246,9 +220,6 @@ export class BleUploader {
     logger.debug(`Using BLE backend: ${this.backend.name}`);
   }
 
-  /**
-   * Initialize Bluetooth adapter and wait for it to be ready
-   */
   private async initBluetooth(): Promise<void> {
     if (this.isInitialized) {
       return;
@@ -258,36 +229,48 @@ export class BleUploader {
     this.isInitialized = true;
   }
 
-  /**
-   * Normalize UUID for comparison
-   * Handles both full 128-bit UUIDs and short 16/32-bit UUIDs
-   * Short UUIDs use the Bluetooth Base UUID: 00000000-0000-1000-8000-00805f9b34fb
-   */
   private normalizeUUID(uuid: string): string {
-    // Remove dashes and lowercase
     const cleaned = uuid.replace(/-/g, "").toLowerCase();
-
-    // If it's a full 128-bit UUID using Bluetooth Base UUID, extract the short form
-    // Bluetooth Base UUID pattern: 0000XXXX-0000-1000-8000-00805f9b34fb
-    const bluetoothBasePattern = /^0000([0-9a-f]{4})00001000800000805f9b34fb$/;
-    const match = cleaned.match(bluetoothBasePattern);
-    if (match && match[1]) {
-      return match[1]; // Return short UUID part
-    }
-
-    // For short UUIDs (3-4 hex chars), pad with zeros to 4 chars for consistent comparison
-    // This handles cases like "1f1" vs "01f1"
-    if (cleaned.length <= 4) {
-      return cleaned.padStart(4, "0");
-    }
-
+    // Strip Bluetooth Base UUID wrapper: 0000XXXX-0000-1000-8000-00805f9b34fb → XXXX
+    const match = cleaned.match(/^0000([0-9a-f]{4})00001000800000805f9b34fb$/);
+    if (match && match[1]) return match[1];
+    if (cleaned.length <= 4) return cleaned.padStart(4, "0");
     return cleaned;
   }
 
-  /**
-   * Scan for the BeamBox device
-   * @returns Device address or null if not found
-   */
+  public setDeviceAddress(address: string): void {
+    this.deviceAddress = address;
+    this.alreadyScanned = true;
+  }
+
+  public async scanForDevices(
+    onDeviceFound?: (device: { name: string | null; address: string }) => void,
+    signal?: AbortSignal,
+  ): Promise<Array<{ name: string | null; address: string }>> {
+    await this.initBluetooth();
+
+    logger.info("Starting device scan...", LogEventType.SCAN_START);
+
+    const targetName = this.bleConfig.deviceName.toLowerCase();
+    const timeout = this.bleConfig.scanTimeout * 1000;
+
+    const devices = await this.backend.scanForAll(
+      (device) =>
+        !!device.name && device.name.toLowerCase().includes(targetName),
+      timeout,
+      onDeviceFound,
+      signal,
+    );
+
+    logger.info(
+      `Scan complete, found ${devices.length} device(s)`,
+      LogEventType.DEVICES_FOUND,
+      { devices },
+    );
+
+    return devices;
+  }
+
   public async findDevice(): Promise<string | null> {
     await this.initBluetooth();
 
@@ -297,9 +280,7 @@ export class BleUploader {
     const timeout = this.bleConfig.scanTimeout * 1000;
 
     const found = await this.backend.scanFor((device) => {
-      return (
-        !!device.name && device.name.toLowerCase().includes(targetName)
-      );
+      return !!device.name && device.name.toLowerCase().includes(targetName);
     }, timeout);
 
     if (!found) {
@@ -324,7 +305,13 @@ export class BleUploader {
       await this.initBluetooth();
 
       if (!this.connectedAddress) {
-        if (!this.deviceAddress) {
+        if (this.alreadyScanned && this.deviceAddress) {
+          logger.info(
+            `Using previously scanned device: ${this.deviceAddress}`,
+            LogEventType.DEVICE_FOUND,
+            { address: this.deviceAddress },
+          );
+        } else if (!this.deviceAddress) {
           logger.info("Scanning for device...", LogEventType.SCAN_START);
           const address = await this.findDevice();
           if (!address) {
@@ -516,7 +503,11 @@ export class BleUploader {
   public async sendData(
     fullData: Buffer,
     packetType: PacketType,
-    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
+    onProgress?: (
+      sendProgress: number,
+      confirmProgress: number,
+      status?: string,
+    ) => void,
   ): Promise<boolean> {
     if (!this.writeCharacteristic) {
       throw new ConnectionError("BLE client not connected");
@@ -590,8 +581,13 @@ export class BleUploader {
       // Report progress
       if (onProgress) {
         const sendProgress = ((i + 1) / totalChunks) * 100;
-        const confirmProgress = (this.notificationHandler.packetSuccessCount / totalChunks) * 100;
-        onProgress(sendProgress, confirmProgress, `Sending: (${i + 1}/${totalChunks} packets)`);
+        const confirmProgress =
+          (this.notificationHandler.packetSuccessCount / totalChunks) * 100;
+        onProgress(
+          sendProgress,
+          confirmProgress,
+          `Sending: (${i + 1}/${totalChunks} packets)`,
+        );
       }
 
       await this.sleep(this.chunkDelay * 1000);
@@ -616,8 +612,13 @@ export class BleUploader {
 
           if (onProgress) {
             const sendProgress = ((i + 1) / totalChunks) * 100;
-            const confirmProgress = (this.notificationHandler.packetSuccessCount / totalChunks) * 100;
-            onProgress(sendProgress, confirmProgress, `Sending: (${this.notificationHandler.packetSuccessCount}/${totalChunks} packets)`);
+            const confirmProgress =
+              (this.notificationHandler.packetSuccessCount / totalChunks) * 100;
+            onProgress(
+              sendProgress,
+              confirmProgress,
+              `Sending: (${this.notificationHandler.packetSuccessCount}/${totalChunks} packets)`,
+            );
           }
 
           await this.sleep(100);
@@ -636,7 +637,11 @@ export class BleUploader {
    * @returns True if all acks received without error
    */
   public async waitForResponse(
-    onProgress?: (sendProgress: number, confirmProgress: number, status?: string) => void,
+    onProgress?: (
+      sendProgress: number,
+      confirmProgress: number,
+      status?: string,
+    ) => void,
   ): Promise<boolean> {
     this.notificationHandler.waitingForAck = true;
 
@@ -668,7 +673,11 @@ export class BleUploader {
           (this.notificationHandler.packetSuccessCount /
             this.notificationHandler.expectedAckCount) *
           100;
-        onProgress(100, confirmProgress, `Confirming: (${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount} packets)`);
+        onProgress(
+          100,
+          confirmProgress,
+          `Confirming: (${this.notificationHandler.packetSuccessCount}/${this.notificationHandler.expectedAckCount} packets)`,
+        );
       }
 
       await this.sleep(100); // Check every 100ms

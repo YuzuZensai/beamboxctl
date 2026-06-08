@@ -34,6 +34,7 @@ export class NobleBackend implements BleBackend {
   readonly name = "noble";
 
   private peripheral: Peripheral | null = null;
+  private peripheralsByAddress = new Map<string, Peripheral>();
   private initialized = false;
 
   async init(): Promise<void> {
@@ -107,6 +108,7 @@ export class NobleBackend implements BleBackend {
           await this.stopScan();
           noble.removeListener("discover", onDiscover);
           this.peripheral = peripheral;
+          this.peripheralsByAddress.set(device.address, peripheral);
           resolve(device);
         }
       };
@@ -121,11 +123,65 @@ export class NobleBackend implements BleBackend {
     });
   }
 
+  async scanForAll(
+    matcher: (device: DiscoveredDevice) => boolean,
+    timeoutMs: number,
+    onDeviceFound?: (device: DiscoveredDevice) => void,
+    signal?: AbortSignal,
+  ): Promise<DiscoveredDevice[]> {
+    return new Promise((resolve) => {
+      const found = new Map<string, DiscoveredDevice>();
+
+      const finish = async () => {
+        clearTimeout(timeoutId);
+        await this.stopScan();
+        noble.removeListener("discover", onDiscover);
+        resolve(Array.from(found.values()));
+      };
+
+      const timeoutId = setTimeout(finish, timeoutMs);
+
+      signal?.addEventListener("abort", finish, { once: true });
+
+      const onDiscover = async (peripheral: Peripheral) => {
+        const device: DiscoveredDevice = {
+          address: peripheral.address || peripheral.id,
+          name: peripheral.advertisement.localName ?? null,
+        };
+
+        logger.debug(
+          `Discovered device: ${device.name ?? "(unnamed)"} (${device.address})`,
+        );
+
+        if (matcher(device) && !found.has(device.address)) {
+          found.set(device.address, device);
+          this.peripheralsByAddress.set(device.address, peripheral);
+          if (!this.peripheral) {
+            this.peripheral = peripheral;
+          }
+          onDeviceFound?.(device);
+        }
+      };
+
+      noble.on("discover", onDiscover);
+
+      noble.startScanningAsync([], false).catch(() => {
+        clearTimeout(timeoutId);
+        noble.removeListener("discover", onDiscover);
+        resolve([]);
+      });
+    });
+  }
+
   async stopScan(): Promise<void> {
     await noble.stopScanningAsync().catch(() => {});
   }
 
   async connect(address: string): Promise<void> {
+    const byAddress = this.peripheralsByAddress.get(address);
+    if (byAddress) {
+      this.peripheral = byAddress;
+    }
     if (!this.peripheral) {
       throw new ConnectionError(`No discovered peripheral for ${address}`);
     }

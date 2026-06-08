@@ -20,6 +20,13 @@ export interface BleBackend {
     timeoutMs: number,
   ): Promise<DiscoveredDevice | null>;
 
+  scanForAll(
+    matcher: (device: DiscoveredDevice) => boolean,
+    timeoutMs: number,
+    onDeviceFound?: (device: DiscoveredDevice) => void,
+    signal?: AbortSignal,
+  ): Promise<DiscoveredDevice[]>;
+
   stopScan(): Promise<void>;
 
   connect(address: string): Promise<void>;
