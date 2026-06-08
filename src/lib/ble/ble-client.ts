@@ -1,13 +1,20 @@
 import { EventEmitter } from "node:events";
 EventEmitter.defaultMaxListeners = 20;
 
-import noble from "@stoprocent/noble";
-import type { Peripheral, Characteristic } from "@stoprocent/noble";
 import type { BLEConfig, ProtocolConfig } from "../protocol/index.ts";
 import { PacketType } from "../protocol/index.ts";
 import { DeviceNotFoundError, ConnectionError } from "../utils/errors.ts";
 import { PayloadBuilder, ResponseParser } from "../protocol/index.ts";
 import { logger, LogEventType } from "../utils/logger.ts";
+import type { BleBackend, BleCharacteristic } from "./backend.ts";
+import { resolveBackendType } from "./backend.ts";
+import { NobleBackend } from "./backends/noble-backend.ts";
+import { DBusBackend } from "./backends/dbus-backend.ts";
+
+function createBackend(): BleBackend {
+  const type = resolveBackendType();
+  return type === "dbus" ? new DBusBackend() : new NobleBackend();
+}
 
 /**
  * Handles notifications from the BeamBox device
@@ -214,14 +221,15 @@ class NotificationHandler {
  * Manages BLE connection and data transfer to BeamBox device
  */
 export class BleUploader {
-  private peripheral: Peripheral | null = null;
-  private writeCharacteristic: Characteristic | null = null;
-  private notifyCharacteristic: Characteristic | null = null;
+  private backend: BleBackend;
+  private writeCharacteristic: BleCharacteristic | null = null;
+  private notifyCharacteristic: BleCharacteristic | null = null;
   private notificationHandler: NotificationHandler;
   private payloadBuilder: PayloadBuilder;
   private chunkDelay: number;
   private verbose: boolean = false;
   private isInitialized: boolean = false;
+  private connectedAddress: string | null = null;
 
   constructor(
     private deviceAddress: string | null,
@@ -234,50 +242,20 @@ export class BleUploader {
     this.verbose = verbose;
     this.notificationHandler = new NotificationHandler(verbose);
     this.payloadBuilder = new PayloadBuilder(protocolConfig);
+    this.backend = createBackend();
+    logger.debug(`Using BLE backend: ${this.backend.name}`);
   }
 
   /**
-   * Initialize Bluetooth adapter and wait for powered on state
+   * Initialize Bluetooth adapter and wait for it to be ready
    */
   private async initBluetooth(): Promise<void> {
     if (this.isInitialized) {
       return;
     }
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new ConnectionError("Bluetooth adapter initialization timeout"));
-      }, 10000);
-
-      const checkState = (state: string) => {
-        if (state === "poweredOn") {
-          clearTimeout(timeout);
-          this.isInitialized = true;
-          resolve();
-        } else if (state === "poweredOff") {
-          clearTimeout(timeout);
-          reject(new ConnectionError("Bluetooth adapter is not powered on"));
-        } else if (state === "unsupported") {
-          clearTimeout(timeout);
-          reject(
-            new ConnectionError("Bluetooth is not supported on this device"),
-          );
-        } else if (state === "unauthorized") {
-          clearTimeout(timeout);
-          reject(new ConnectionError("Bluetooth access not authorized"));
-        }
-      };
-
-      // Check current state first
-      if ((noble as any).state === "poweredOn") {
-        clearTimeout(timeout);
-        this.isInitialized = true;
-        resolve();
-        return;
-      }
-
-      noble.on("stateChange", checkState);
-    });
+    await this.backend.init();
+    this.isInitialized = true;
   }
 
   /**
@@ -315,50 +293,26 @@ export class BleUploader {
 
     logger.info("Starting device scan...", LogEventType.SCAN_START);
 
-    return new Promise((resolve) => {
-      const timeout = this.bleConfig.scanTimeout * 1000;
-      let found = false;
+    const targetName = this.bleConfig.deviceName.toLowerCase();
+    const timeout = this.bleConfig.scanTimeout * 1000;
 
-      const timeoutId = setTimeout(async () => {
-        if (!found) {
-          await noble.stopScanningAsync();
-          noble.removeListener("discover", onDiscover);
-          resolve(null);
-        }
-      }, timeout);
+    const found = await this.backend.scanFor((device) => {
+      return (
+        !!device.name && device.name.toLowerCase().includes(targetName)
+      );
+    }, timeout);
 
-      const onDiscover = async (peripheral: Peripheral) => {
-        const name = peripheral.advertisement.localName;
+    if (!found) {
+      return null;
+    }
 
-        if (
-          name &&
-          name.toLowerCase().includes(this.bleConfig.deviceName.toLowerCase())
-        ) {
-          found = true;
-          clearTimeout(timeoutId);
-          await noble.stopScanningAsync();
-          noble.removeListener("discover", onDiscover);
+    logger.info(
+      `Found device: ${found.name} (${found.address})`,
+      LogEventType.DEVICE_FOUND,
+      { name: found.name, address: found.address },
+    );
 
-          const address = peripheral.address || peripheral.id;
-          logger.info(
-            `Found device: ${name} (${address})`,
-            LogEventType.DEVICE_FOUND,
-            { name, address },
-          );
-
-          this.peripheral = peripheral;
-          resolve(address);
-        }
-      };
-
-      noble.on("discover", onDiscover);
-
-      noble.startScanningAsync([], false).catch((err: Error) => {
-        clearTimeout(timeoutId);
-        logger.error(`Scan error: ${err}`);
-        resolve(null);
-      });
-    });
+    return found.address;
   }
 
   /**
@@ -369,7 +323,7 @@ export class BleUploader {
     try {
       await this.initBluetooth();
 
-      if (!this.peripheral) {
+      if (!this.connectedAddress) {
         if (!this.deviceAddress) {
           logger.info("Scanning for device...", LogEventType.SCAN_START);
           const address = await this.findDevice();
@@ -385,74 +339,30 @@ export class BleUploader {
             LogEventType.SCAN_START,
           );
 
-          const foundPeripheral = await new Promise<Peripheral | null>(
-            (resolve) => {
-              const timeout = this.bleConfig.scanTimeout * 1000;
-              let found = false;
+          const targetAddress = this.deviceAddress.toLowerCase();
+          const timeout = this.bleConfig.scanTimeout * 1000;
 
-              const timeoutId = setTimeout(async () => {
-                if (!found) {
-                  await noble.stopScanningAsync();
-                  noble.removeListener("discover", onDiscover);
-                  resolve(null);
-                }
-              }, timeout);
-
-              const onDiscover = async (peripheral: Peripheral) => {
-                const address = peripheral.address || peripheral.id;
-                if (
-                  address.toLowerCase() === this.deviceAddress?.toLowerCase()
-                ) {
-                  found = true;
-                  clearTimeout(timeoutId);
-                  await noble.stopScanningAsync();
-                  noble.removeListener("discover", onDiscover);
-                  resolve(peripheral);
-                }
-              };
-
-              noble.on("discover", onDiscover);
-              noble.startScanningAsync([], false).catch(() => {
-                clearTimeout(timeoutId);
-                resolve(null);
-              });
-            },
+          const found = await this.backend.scanFor(
+            (device) => device.address.toLowerCase() === targetAddress,
+            timeout,
           );
 
-          if (!foundPeripheral) {
+          if (!found) {
             throw new DeviceNotFoundError(
               `Could not find device with address '${this.deviceAddress}'`,
             );
           }
-          this.peripheral = foundPeripheral;
         }
       }
 
-      // Stop scanning before connecting
-      await noble.stopScanningAsync().catch(() => {});
-
-      // Check peripheral state before connecting
-      logger.debug(
-        `Peripheral state before connect: ${this.peripheral!.state}`,
-      );
-
-      // If already connected, disconnect first to ensure clean state
-      if (
-        this.peripheral!.state === "connected" ||
-        this.peripheral!.state === "connecting"
-      ) {
-        logger.debug(
-          "Device already connected/connecting, disconnecting first...",
-        );
-        await this.peripheral!.disconnectAsync().catch(() => {});
-        await this.sleep(500); // Brief delay after disconnect
-      }
+      await this.backend.stopScan();
 
       // Connect to device
       logger.info("Connecting to device...", LogEventType.CONNECT_START);
       const connectStartTime = Date.now();
 
-      await this.peripheral!.connectAsync();
+      await this.backend.connect(this.deviceAddress!);
+      this.connectedAddress = this.deviceAddress;
 
       const connectDuration = Date.now() - connectStartTime;
       logger.info(
@@ -461,9 +371,9 @@ export class BleUploader {
       );
 
       // Handle disconnect events
-      this.peripheral!.once("disconnect", () => {
+      this.backend.onDisconnect(() => {
         logger.info("Device disconnected");
-        this.peripheral = null;
+        this.connectedAddress = null;
         this.writeCharacteristic = null;
         this.notifyCharacteristic = null;
       });
@@ -473,10 +383,7 @@ export class BleUploader {
 
       // Setup notifications
       if (this.notifyCharacteristic) {
-        await this.notifyCharacteristic.subscribeAsync();
-
-        // Listen for notifications
-        this.notifyCharacteristic.on("data", (data: Buffer) => {
+        await this.notifyCharacteristic.subscribe((data: Buffer) => {
           this.notificationHandler.handleNotification(data);
         });
       }
@@ -509,13 +416,6 @@ export class BleUploader {
    * Discover required characteristics on the device
    */
   private async discoverCharacteristics(): Promise<void> {
-    if (!this.peripheral) {
-      throw new ConnectionError("Not connected to device");
-    }
-
-    const { services } =
-      await this.peripheral.discoverAllServicesAndCharacteristicsAsync();
-
     const normalizedWriteUuid = this.normalizeUUID(
       this.bleConfig.writeCharacteristicUUID,
     );
@@ -526,38 +426,25 @@ export class BleUploader {
     logger.debug(`Looking for write UUID: ${normalizedWriteUuid}`);
     logger.debug(`Looking for notify UUID: ${normalizedNotifyUuid}`);
 
-    // Iterate through services and their characteristics
-    for (const service of services) {
-      logger.debug(`Service: ${service.uuid}`);
+    const { write, notify } = await this.backend.discoverCharacteristics(
+      this.bleConfig.writeCharacteristicUUID,
+      this.bleConfig.notifyCharacteristicUUID,
+      (uuid) => this.normalizeUUID(uuid),
+    );
 
-      for (const char of service.characteristics) {
-        const normalizedCharUuid = this.normalizeUUID(char.uuid);
-        logger.debug(
-          `  Characteristic: ${char.uuid} (normalized: ${normalizedCharUuid})`,
-        );
+    this.writeCharacteristic = write;
+    this.notifyCharacteristic = notify;
 
-        if (normalizedCharUuid === normalizedWriteUuid) {
-          this.writeCharacteristic = char;
-          logger.debug(
-            `Found write characteristic: ${char.uuid}`,
-            LogEventType.DISCOVER_CHAR,
-            { type: "write", uuid: char.uuid },
-          );
-        }
-        if (normalizedCharUuid === normalizedNotifyUuid) {
-          this.notifyCharacteristic = char;
-          logger.debug(
-            `Found notify characteristic: ${char.uuid}`,
-            LogEventType.DISCOVER_CHAR,
-            { type: "notify", uuid: char.uuid },
-          );
-        }
-      }
-    }
-
-    if (!this.writeCharacteristic || !this.notifyCharacteristic) {
-      throw new ConnectionError("Could not find required characteristics");
-    }
+    logger.debug(
+      `Found write characteristic: ${write.uuid}`,
+      LogEventType.DISCOVER_CHAR,
+      { type: "write", uuid: write.uuid },
+    );
+    logger.debug(
+      `Found notify characteristic: ${notify.uuid}`,
+      LogEventType.DISCOVER_CHAR,
+      { type: "notify", uuid: notify.uuid },
+    );
   }
 
   /**
@@ -566,16 +453,13 @@ export class BleUploader {
   public async disconnect(): Promise<void> {
     try {
       if (this.notifyCharacteristic) {
-        this.notifyCharacteristic.removeAllListeners();
-        await this.notifyCharacteristic.unsubscribeAsync().catch(() => {});
-      }
-      if (this.peripheral) {
-        this.peripheral.removeAllListeners();
-        await this.peripheral.disconnectAsync().catch(() => {});
+        await this.notifyCharacteristic.unsubscribe();
       }
 
-      noble.removeAllListeners();
-      await noble.stopScanningAsync().catch(() => {});
+      await this.backend.disconnect();
+      this.connectedAddress = null;
+      this.writeCharacteristic = null;
+      this.notifyCharacteristic = null;
     } catch (error) {
       logger.warning(`Error during disconnect: ${error}`);
     }
@@ -618,7 +502,7 @@ export class BleUploader {
     this.notificationHandler.logSentPacket(packet, "Image info packet");
 
     // Write without response
-    await this.writeCharacteristic.writeAsync(packet, true);
+    await this.writeCharacteristic.write(packet, true);
     await this.sleep(this.protocolConfig.imageInfoDelay * 1000);
   }
 
@@ -696,7 +580,7 @@ export class BleUploader {
       }
 
       // Write without response
-      await this.writeCharacteristic.writeAsync(packet, true);
+      await this.writeCharacteristic.write(packet, true);
 
       if (this.notificationHandler.errorFlag) {
         logger.error("Device error flag set; aborting send.");
