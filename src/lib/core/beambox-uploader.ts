@@ -266,12 +266,19 @@ export class BeamBoxUploader {
   ): Promise<boolean> {
     const animationSize: [number, number] = targetSize;
 
+    // Official app does this. so let's do it too
+    // caps every animation source at 3 seconds, 20fps
+    const MAX_ANIMATION_DURATION_SECS = 3;
+    const ANIMATION_FPS = 20;
+
     // Extract frames from the file
     logger.info(
       `Extracting frames from animation at ${animationSize[0]}x${animationSize[1]}...`,
     );
     const frames = await FrameExtractor.extractFrames(filePath, {
       targetSize: animationSize,
+      fps: ANIMATION_FPS,
+      maxDurationSecs: MAX_ANIMATION_DURATION_SECS,
     });
 
     logger.info(`Extracted ${frames.length} frames`);
@@ -293,12 +300,7 @@ export class BeamBoxUploader {
       logger.info(`Padded to ${frames.length} frames`);
     }
 
-    // Calculate frame interval
-    // Based on analysis: working animations use 50ms interval
-    // TODO: Experiment with different intervals later
-    // The timing string must fit in 12 bytes ("output/XXms\0"), so intervals
-    // must be 2 digits (10-99). Using 50ms as it's proven to work.
-    const intervalMs = 50;
+    const intervalMs = Math.round(1000 / ANIMATION_FPS);
     logger.info(`Using frame interval: ${intervalMs}ms`);
 
     // Wait for device to be ready
@@ -415,14 +417,6 @@ export class BeamBoxUploader {
   }
 
   /**
-   * Check if device is ready
-   * @returns True if device is ready
-   */
-  public isDeviceReady(): boolean {
-    return this.ble.isDeviceReady();
-  }
-
-  /**
    * Get device status notifications
    * @param timeoutMs Maximum time to wait for status in milliseconds
    * @returns Device status object and all notifications
@@ -499,22 +493,6 @@ export class BeamBoxUploader {
     } finally {
       await this.disconnect();
     }
-  }
-
-  /**
-   * Get device status
-   * @returns Device status object
-   */
-  public getDeviceStatus(): Record<string, unknown> | null {
-    return this.ble.getDeviceStatus();
-  }
-
-  /**
-   * Check if an error occurred
-   * @returns True if error occurred
-   */
-  public hasError(): boolean {
-    return this.ble.hasError();
   }
 
   private sleep(ms: number): Promise<void> {

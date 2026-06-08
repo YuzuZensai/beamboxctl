@@ -11,10 +11,12 @@ import { logger } from "../utils/logger.ts";
 const execAsync = promisify(exec);
 
 export interface FrameExtractionOptions {
-  /** Target FPS for extraction (default: extract all frames) */
+  /** Target FPS for extraction. */
   fps?: number;
   /** Target size for frames [width, height] */
   targetSize?: [number, number];
+  /** Maximum source duration to extract, in seconds. */
+  maxDurationSecs?: number;
 }
 
 /**
@@ -31,7 +33,10 @@ export class FrameExtractor {
     filePath: string,
     options: FrameExtractionOptions = {},
   ): Promise<XV4Frame[]> {
-    const { fps = null, targetSize = [360, 360] } = options;
+    // The official app extracts at 20fps, and caps at 3 seconds (60 frames max).
+    // Let's do the same to ensure consistent results and avoid overwhelming the device with too many frames
+    // Because the device firmware blindly accepts all frames and can cause the device to brick :(
+    const { fps = 20, targetSize = [360, 360], maxDurationSecs = 3 } = options;
 
     // Create temporary directory for frames
     const tempDir = await mkdtemp(join(tmpdir(), "beambox-frames-"));
@@ -43,13 +48,10 @@ export class FrameExtractor {
       const outputPattern = join(tempDir, "frame_%05d.jpg");
       let ffmpegCmd = `ffmpeg -i "${filePath}"`;
 
-      // Build filter chain
-      let filters: string[] = [];
+      ffmpegCmd += ` -t ${maxDurationSecs}`;
 
-      // Add FPS filter if specified
-      if (fps !== null) {
-        filters.push(`fps=${fps}`);
-      }
+      // Build filter chain
+      let filters: string[] = [`fps=${fps}`];
 
       // Add scaling and cropping to fill frame (official app does this)
       // Use 'increase' to scale up to fill, then crop to exact dimensions
@@ -177,102 +179,5 @@ export class FrameExtractor {
         logger.warning(`Failed to clean up temp directory: ${error}`);
       }
     }
-  }
-
-  /**
-   * Calculate GIF frame interval using app logic
-   *
-   * The app uses frame-count-based intervals for GIFs:
-   * - <=12 frames: 200ms (5 fps)
-   * - <=24 frames: 150ms (6.7 fps)
-   * - >24 frames: 100ms (10 fps)
-   *
-   * This is then clamped to [50, 300]ms range.
-   *
-   * @param frameCount Number of extracted frames
-   * @returns Frame interval in milliseconds
-   */
-  static calculateGifInterval(frameCount: number): number {
-    let interval: number;
-
-    if (frameCount <= 12) {
-      interval = 200;
-    } else if (frameCount <= 24) {
-      interval = 150;
-    } else {
-      interval = 100;
-    }
-
-    // Clamp to [50, 300]ms range
-    return Math.max(50, Math.min(300, interval));
-  }
-
-  /**
-   * Get frame rate of a video file
-   * @param filePath Path to the video file
-   * @returns Frame rate in fps
-   */
-  static async getFrameRate(filePath: string): Promise<number> {
-    try {
-      const cmd = `ffprobe -v quiet -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "${filePath}"`;
-      const { stdout } = await execAsync(cmd);
-
-      // Parse fraction (e.g., "30/1" or "30000/1001")
-      const parts = stdout.trim().split("/");
-      if (parts.length === 2) {
-        const num = parseInt(parts[0]!);
-        const den = parseInt(parts[1]!);
-        return num / den;
-      }
-
-      return 30; // Default fallback
-    } catch (error) {
-      logger.warning(`Failed to get frame rate: ${error}`);
-      return 30; // Default fallback
-    }
-  }
-
-  /**
-   * Get duration of a video file in seconds
-   * @param filePath Path to the video file
-   * @returns Duration in seconds
-   */
-  static async getDuration(filePath: string): Promise<number> {
-    try {
-      const cmd = `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${filePath}"`;
-      const { stdout } = await execAsync(cmd);
-      return parseFloat(stdout.trim());
-    } catch (error) {
-      logger.warning(`Failed to get duration: ${error}`);
-      return 0;
-    }
-  }
-
-  /**
-   * Calculate recommended frame interval in milliseconds
-   *
-   * Calculates the interval to preserve the original animation duration
-   * based on source duration and actual extracted frame count.
-   *
-   * @param filePath Path to the source file
-   * @param extractedFrameCount Number of frames that were extracted
-   * @returns Frame interval in milliseconds
-   */
-  static async calculateFrameInterval(
-    filePath: string,
-    extractedFrameCount: number,
-  ): Promise<number> {
-    const duration = await this.getDuration(filePath);
-
-    if (duration > 0 && extractedFrameCount > 1) {
-      // Calculate interval to maintain original playback speed
-      const intervalMs = (duration * 1000) / extractedFrameCount;
-      // Device requires minimum 150ms interval to play animations? Maybe, from trials and errors.
-      // Below 150ms, the device shows only the first frame, somtimes?
-      // Need more testing to confirm.
-      return Math.max(150, Math.round(intervalMs));
-    }
-
-    return 150; // Default 150ms (~6.7fps), device minimum for animation?
   }
 }
