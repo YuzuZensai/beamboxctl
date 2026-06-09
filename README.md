@@ -16,20 +16,21 @@ Unofficial CLI for managing beambox e-Badge devices over Bluetooth LE.
 ## Development
 
 Requirements:
-- Bun
+- NodeJS
+- pnpm
 - Bluetooth LE access on your system
 
 Run in development mode:
 
 ```sh
-bun run dev
+pnpm run dev
 ```
 
 Build and run the CLI:
 
 ```sh
-bun run build
-bun run start
+pnpm run build
+pnpm run start
 ```
 
 ## Legal
