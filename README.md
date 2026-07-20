@@ -1,4 +1,4 @@
-# beamboxctl
+# 📟 beamboxctl
 
 Unofficial CLI for managing beambox e-Badge devices over Bluetooth LE.
 
